@@ -1,0 +1,1312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fixed-point neural samplers on discrete spaces</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="DIG-IN, the Discrete Gibbs Iterative Neural Sampler: a fixed-point neural sampler for discrete, unnormalized distributions.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400;1,8..60,600&display=swap">
+<style>
+/* Layout: one column; text, figure and players share the same width and edges. */
+:root {
+  --bg: #f4f7fa;
+  --surface: #ffffff;
+  --ink: #183247;
+  --ink-2: #4f6577;
+  --rule: #d6dfe7;
+  --accent: #2c6496;
+  --wash: #e8f0f7;
+  --mask: #d3dae1;
+  --spin-0: #4477aa;
+  --spin-1: #cc6677;
+  --spin-2: #228855;
+  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --measure: 60rem;
+  --wide: 60rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d151d;
+    --surface: #132029;
+    --ink: #e2eaf1;
+    --ink-2: #9fb2c3;
+    --rule: #24394a;
+    --accent: #8db6e0;
+    --wash: #172a39;
+    --mask: #34495b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d151d;
+  --surface: #132029;
+  --ink: #e2eaf1;
+  --ink-2: #9fb2c3;
+  --rule: #24394a;
+  --accent: #8db6e0;
+  --wash: #172a39;
+  --mask: #34495b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1.125rem;
+  line-height: 1.65;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+a { color: var(--accent); text-underline-offset: 0.18em; }
+a:focus-visible, button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+main { display: grid; gap: 4.5rem; padding-block: 3.5rem 4rem; }
+main > *, .hero > *, .prose > *, .figure > *, .film > *, .cite > * { min-width: 0; }
+.col { width: 100%; max-width: var(--measure); margin-inline: auto; }
+.wide { width: 100%; max-width: var(--wide); margin-inline: auto; }
+h1, h2 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; }
+h2 { font-size: 1.85rem; line-height: 1.2; letter-spacing: -0.005em; }
+p { margin: 0; }
+.prose { display: grid; gap: 1rem; }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.muted { color: var(--ink-2); }
+i.v { font-family: var(--font-display); font-size: 1.08em; }
+
+/* ---------- hero */
+.hero { display: grid; gap: 1.4rem; }
+.tokens { display: flex; gap: 5px; flex-wrap: wrap; }
+.tokens span {
+  width: 18px; height: 18px; border-radius: 3px;
+  background: var(--mask);
+  animation: reveal 0.35s ease-out forwards;
+}
+@keyframes reveal { to { background: var(--c); } }
+.hero { container-type: inline-size; }
+/* sized so the title fills the column on one line (5.2% of its width), wrapping only below 2.1rem;
+   the optical size is pinned so the width scales linearly with the font size */
+.hero h1 { font-size: clamp(2.1rem, 4.9vw, 3.12rem); font-size: clamp(2.1rem, 5.2cqi, 3.12rem); font-variation-settings: "opsz" 50; line-height: 1.06; letter-spacing: -0.015em; }
+.hero .method { font-family: var(--font-display); font-size: clamp(1.15rem, 2.2vw, 1.4rem); font-style: italic; color: var(--ink-2); }
+.hero .method b { font-style: normal; font-weight: 600; color: var(--ink); }
+.authors { display: flex; flex-wrap: wrap; gap: 0.35rem 1.4rem; font-size: 1.05rem; }
+.authors span { white-space: nowrap; }
+.authors sup, .affil sup { font-size: 0.7em; color: var(--ink-2); margin-left: 1px; }
+.affil { display: flex; flex-wrap: wrap; gap: 0.2rem 1.2rem; font-size: 0.92rem; color: var(--ink-2); }
+.notes { font-size: 0.85rem; color: var(--ink-2); }
+.links { display: flex; flex-wrap: wrap; gap: 0.75rem; padding-top: 0.4rem; }
+.btn {
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  padding: 0.62rem 1.05rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: var(--ink);
+  font: 500 0.95rem/1 var(--font-body);
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.primary:hover { background: var(--accent); border-color: var(--accent); }
+.btn svg { width: 1.05em; height: 1.05em; flex: none; }
+.btn small { font: 400 0.78rem/1 var(--font-mono); color: var(--ink-2); }
+.btn.primary small { color: inherit; opacity: 0.75; }
+
+/* ---------- overview */
+.facts { display: grid; gap: 0.7rem; padding: 0; margin: 0.4rem 0 0; list-style: none; }
+.facts li { display: grid; grid-template-columns: 8.5rem 1fr; gap: 1rem; align-items: baseline; padding-top: 0.7rem; border-top: 1px solid var(--rule); }
+.facts li > span:first-child { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.figure { display: grid; gap: 0.9rem; margin-block: 0; }
+.plate {
+  background: #ffffff;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: clamp(10px, 2.2vw, 26px);
+  overflow-x: auto;
+}
+.plate img { display: block; width: 100%; min-width: 34rem; height: auto; margin-inline: auto; }
+figcaption { font-size: 0.93rem; color: var(--ink-2); width: 100%; max-width: var(--measure); margin-inline: auto; }
+figcaption b { color: var(--ink); font-weight: 600; }
+
+/* ---------- players */
+.film { display: grid; gap: 0.75rem; }
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; }
+.stage .loading {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 0.85rem; color: var(--ink-2);
+}
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
+.play {
+  width: 2.6rem; height: 2.6rem; flex: none;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--ink);
+  background: var(--ink); color: var(--bg);
+  cursor: pointer;
+}
+.play svg { width: 1rem; height: 1rem; }
+.scrub { flex: 1 1 14rem; min-width: 0; accent-color: var(--accent); }
+.clock { font-family: var(--font-mono); font-size: 0.82rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.chapters { display: flex; flex-wrap: wrap; gap: 0.4rem; width: 100%; }
+.chapters button {
+  font: 500 0.82rem/1 var(--font-body);
+  padding: 0.5rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.chapters button[aria-current="true"] { background: var(--wash); color: var(--ink); border-color: var(--accent); }
+.intro { margin-bottom: 1.6rem; }
+.fine { font-size: 0.85rem; color: var(--ink-2); width: 100%; max-width: var(--measure); margin-inline: auto; }
+
+/* ---------- citation */
+.cite { display: grid; gap: 0.8rem; }
+.cite pre {
+  margin: 0;
+  padding: 1.1rem 1.2rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  font: 400 0.84rem/1.55 var(--font-mono);
+  overflow-x: auto;
+}
+.cite .row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+footer { border-top: 1px solid var(--rule); padding-block: 1.6rem 2.4rem; font-size: 0.88rem; color: var(--ink-2); }
+footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.6rem 1.5rem; }
+
+@media (max-width: 560px) {
+  main { gap: 3.2rem; padding-block: 2.2rem 3rem; }
+  .facts li { grid-template-columns: 1fr; gap: 0.15rem; }
+  h2 { font-size: 1.55rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tokens span { animation: none; background: var(--c); }
+}
+</style>
+</head>
+<body>
+<main>
+  <header class="col hero">
+    <div class="tokens" id="tokens" aria-hidden="true"></div>
+    <p class="eyebrow">Preprint · arXiv 2610.01739</p>
+    <h1>Fixed-point neural samplers on discrete spaces</h1>
+    <p class="method">Introducing <b>DIG-IN</b>, the Discrete Gibbs Iterative Neural Sampler</p>
+    <div class="authors">
+      <span>Jiajun He<sup>1*</sup></span>
+      <span>Denis Blessing<sup>2*</sup></span>
+      <span>Mouyang Chen<sup>3</sup></span>
+      <span>Yuanqi Du<sup>4†</sup></span>
+      <span>Carles Domingo-Enrich<sup>4†</sup></span>
+    </div>
+    <div class="affil">
+      <span><sup>1</sup>University of Cambridge</span>
+      <span><sup>2</sup>Karlsruhe Institute of Technology</span>
+      <span><sup>3</sup>MIT</span>
+      <span><sup>4</sup>Microsoft Research New England</span>
+    </div>
+    <p class="notes">* Equal contribution. † Equal supervision.</p>
+    <div class="links">
+      <a class="btn primary" href="https://arxiv.org/pdf/2610.01739" target="_blank" rel="noopener">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 2.5h6.5L15.5 6.5V17.5H5z"/><path d="M11.5 2.5v4h4"/><path d="M7.5 10.5h5M7.5 13.5h5"/></svg>
+        Paper <small>arXiv</small>
+      </a>
+      <a class="btn" href="#" data-code-link>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 6 3 10l4 4M13 6l4 4-4 4"/></svg>
+        Code <small>coming soon</small>
+      </a>
+    </div>
+  </header>
+
+  <section class="col prose" id="overview" aria-labelledby="overview-h">
+    <h2 id="overview-h">Overview</h2>
+    <p>Sampling from a discrete distribution known only up to its normalizing constant is hard. MCMC mixes slowly across energy barriers, and existing discrete neural samplers tend to collapse onto a single mode. DIG-IN trains a masked diffusion sampler from density evaluations alone, with no training data.</p>
+    <p>Each iteration draws configurations from the current model, tempers their importance weights to a target effective sample size, and fits the model with a weighted cross-entropy. The labels in that loss are <em>Gibbs labels</em>: the normalized distribution over single-site changes of a configuration, a discrete analogue of the score. They give a strong learning signal and keep the sampler from collapsing onto one mode.</p>
+    <ul class="facts">
+      <li><span>Ising &amp; Potts</span><span>The only method in our comparison that covers every mode in the ordered phase while also giving accurate ln&nbsp;<i class="v">Z</i>.</span></li>
+      <li><span>Amortized</span><span>One sampler conditioned on (<i class="v">β</i>, <i class="v">h</i>), on lattices up to <i class="v">D</i>&nbsp;=&nbsp;2500 sites.</span></li>
+      <li><span>Alloys</span><span>Recovers the phase diagrams of Ag–Pd and Cu–Au from a single sampler conditioned on (<i class="v">T</i>, Δ<i class="v">μ</i>).</span></li>
+    </ul>
+  </section>
+
+  <figure class="wide figure" aria-labelledby="fig1-cap">
+    <div class="plate">
+      <img src="assets/fig_algorithm.svg" alt="The DIG-IN training loop in five panels: 1, simulate and weight by revealing sites with the model and computing importance weights; 2, temper the weights with ESS control; 3, store samples, Gibbs labels and tempered weights in a replay buffer; 4, draw a minibatch and mask sites at a random time; 5, take a gradient step on the weighted soft cross-entropy with local Gibbs scores as labels." width="1100" height="515">
+    </div>
+    <figcaption id="fig1-cap"><b>One DIG-IN iteration.</b> Data collection, importance-weight smoothing with ESS control, and a parameter update with a weighted cross-entropy whose labels are local Gibbs scores.</figcaption>
+  </figure>
+
+  <section class="wide film-section" id="alloys" aria-labelledby="alloys-h">
+    <div class="col prose intro">
+      <h2 id="alloys-h">Alloy phase diagrams</h2>
+      <p>For Ag–Pd and Cu–Au, a single sampler is conditioned on temperature <i class="v">T</i> and chemical-potential difference Δ<i class="v">μ</i> over a DFT-fitted cluster expansion. Its free-energy estimates give the phase diagram through a common-tangent construction. Here we point into regions of that diagram and watch the sampler place atoms on the fcc cell until the structure of the phase appears.</p>
+    </div>
+    <div class="film" id="film-alloy">
+      <div class="stage">
+        <canvas role="img" aria-label="Animated sequence: phase diagrams of Ag-Pd and Cu-Au in composition and temperature, with arrows to selected conditions and a rotating 3D fcc cell whose atoms are revealed one at a time."></canvas>
+        <div class="loading">Loading structures…</div>
+      </div>
+      <div class="controls">
+        <button class="play" type="button" id="alloy-play" aria-label="Play"></button>
+        <input class="scrub" type="range" id="alloy-scrub" min="0" max="1000" value="0" aria-label="Seek">
+        <span class="clock" id="alloy-clock">0:00 / 0:00</span>
+        <div class="chapters" role="group" aria-label="Chapters"></div>
+      </div>
+      <p class="fine">Solid lines are the boundaries DIG-IN predicts, dashed lines the reference. Each marker sits at the composition of the structure shown. The cell is periodic and is drawn as a 4&nbsp;×&nbsp;4&nbsp;×&nbsp;4 block of cubic fcc cells, so each site appears about twice. Drag the block to rotate it.</p>
+    </div>
+  </section>
+
+  <section class="wide film-section" id="lattices" aria-labelledby="lattices-h">
+    <div class="col prose intro">
+      <h2 id="lattices-h">Amortized sampling across temperature and external field</h2>
+      <p>We train a single DIG-IN model on the 50&nbsp;×&nbsp;50 Ising model and another on the 24&nbsp;×&nbsp;24 three-state Potts model, each conditioned on the inverse temperature <i class="v">β</i> and an external field <i class="v">h</i>. The film points at conditions on the training grid and replays how the sampler builds a configuration there, revealing one site or a small group of sites per network call.</p>
+    </div>
+    <div class="film" id="film-lattice">
+      <div class="stage">
+        <canvas role="img" aria-label="Animated sequence: 9 by 9 grids of Ising and Potts samples over inverse temperature beta and field h, followed by the sampler demasking a configuration at several selected conditions."></canvas>
+        <div class="loading">Loading trajectories…</div>
+      </div>
+      <div class="controls">
+        <button class="play" type="button" id="lattice-play" aria-label="Play"></button>
+        <input class="scrub" type="range" id="lattice-scrub" min="0" max="1000" value="0" aria-label="Seek">
+        <span class="clock" id="lattice-clock">0:00 / 0:00</span>
+        <div class="chapters" role="group" aria-label="Chapters"></div>
+      </div>
+      <p class="fine">Every trajectory is a draw from the trained checkpoint, recorded call by call. Grey cells are still masked. Outlined cells were revealed in the most recent calls. Each thumbnail is one draw at its grid point; at the points the film visits, it is the draw being replayed.</p>
+    </div>
+  </section>
+
+  <section class="col cite" id="citation" aria-labelledby="cite-h">
+    <div class="row">
+      <h2 id="cite-h">Citation</h2>
+      <button class="btn" type="button" id="copy-bib">Copy BibTeX</button>
+    </div>
+<pre id="bibtex">@article{he2026fixedpoint,
+  title   = {Fixed-point neural samplers on discrete spaces},
+  author  = {He, Jiajun and Blessing, Denis and Chen, Mouyang
+             and Du, Yuanqi and Domingo-Enrich, Carles},
+  journal = {arXiv preprint arXiv:2610.01739},
+  year    = {2026}
+}</pre>
+  </section>
+</main>
+
+<footer>
+  <div class="wide">
+    <span>DIG-IN · Discrete Gibbs Iterative Neural Sampler</span>
+    <span><a href="https://arxiv.org/pdf/2610.01739" target="_blank" rel="noopener">Paper</a> · <a href="#" data-code-link>Code (coming soon)</a></span>
+  </div>
+</footer>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ basics */
+// Repository link: replace null with the URL once the code is public.
+const CODE_URL = null;
+
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const FONT = {
+  display: '"Source Serif 4", Georgia, "Times New Roman", serif',
+  body: '"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
+  mono: '"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace',
+};
+// the paper's lattice colormap: state 0 blue, 1 rose, 2 green
+const SPIN_RGB = [[68, 119, 170], [204, 102, 119], [34, 136, 85]];
+const SPIN = SPIN_RGB.map(c => `rgb(${c})`);
+// the paper's species colours
+const ELEMENT_RGB = { Ag: [192, 192, 192], Pd: [0, 105, 133], Cu: [200, 128, 51], Au: [255, 209, 35] };
+
+const theme = {};
+// labels at 18px and below are drawn this much larger in the tall layout,
+// whose logical canvas is shown at roughly half size on a phone
+let FS = 1;
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ["bg", "surface", "ink", "ink-2", "rule", "accent", "wash", "mask"]) {
+    theme[k] = cs.getPropertyValue("--" + k).trim();
+  }
+  films.forEach(f => f.invalidate());
+}
+
+const clamp01 = v => Math.max(0, Math.min(1, v));
+const lerp = (a, b, p) => a + (b - a) * p;
+const ease = p => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
+const easeOut = p => 1 - Math.pow(1 - p, 3);
+const lerpBox = (a, b, p) => ({ x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), s: lerp(a.s, b.s, p) });
+const signed = (v, d) => (v < -1e-12 ? "−" : "+") + Math.abs(v).toFixed(d);
+const fmtInt = n => n.toLocaleString("en-US");
+const fmtField = h => (Math.abs(h) < 1e-12 ? "0" : signed(h, Math.abs(h) >= 0.05 ? 2 : 3));
+const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+
+function b64bytes(s) {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+const b64u16 = s => new Uint16Array(b64bytes(s).buffer);
+
+const SUB = "₀₁₂₃₄₅₆₇₈₉";
+
+function text(ctx, str, x, y, o = {}) {
+  if (/[₀-₉]/.test(str) && (o.align ?? "left") === "left") return subText(ctx, str, x, y, o);
+  ctx.save();
+  ctx.globalAlpha *= o.alpha ?? 1;
+  const size = o.size ?? 16;
+  ctx.font = `${o.weight ?? 400} ${size <= 18 ? size * FS : size}px ${o.font ?? FONT.body}`;
+  ctx.fillStyle = o.color ?? theme.ink;
+  ctx.textAlign = o.align ?? "left";
+  ctx.textBaseline = o.baseline ?? "alphabetic";
+  if (o.halo) {
+    ctx.lineWidth = 5;
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = theme.surface;
+    ctx.strokeText(str, x, y);
+  }
+  ctx.fillText(str, x, y);
+  const w = ctx.measureText(str).width;
+  ctx.restore();
+  return w;
+}
+
+// left-aligned text whose subscript digits are set smaller and lowered
+function subText(ctx, str, x, y, o) {
+  const size = o.size ?? 16;
+  const eff = size <= 18 ? size * FS : size;
+  let cx = x;
+  for (const run of str.match(/[₀-₉]+|[^₀-₉]+/g)) {
+    if (SUB.includes(run[0])) {
+      const digits = [...run].map(c => SUB.indexOf(c)).join("");
+      cx += text(ctx, digits, cx, y + eff * 0.22, { ...o, size: (eff * 0.68) / (eff * 0.68 <= 18 ? FS : 1) });
+    } else {
+      cx += text(ctx, run, cx, y, o);
+    }
+  }
+  return cx - x;
+}
+
+// greedy word wrap; returns the y below the last line
+function wrapText(ctx, str, x, y, maxW, lineH, o = {}) {
+  const size = o.size ?? 16;
+  ctx.save();
+  ctx.font = `${o.weight ?? 400} ${size <= 18 ? size * FS : size}px ${o.font ?? FONT.body}`;
+  const lines = [];
+  let cur = "";
+  for (const w of str.split(" ")) {
+    const t = cur ? cur + " " + w : w;
+    if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t;
+  }
+  if (cur) lines.push(cur);
+  ctx.restore();
+  lines.forEach((l, i) => text(ctx, l, x, y + i * lineH, o));
+  return y + (lines.length - 1) * lineH;
+}
+
+// a symbol with a subscript, e.g. beta_c, in the display face
+function subscripted(ctx, base, sub, x, y, o = {}) {
+  const size = (o.size ?? 16) * ((o.size ?? 16) <= 18 ? FS : 1);
+  const align = o.align ?? "left";
+  ctx.save();
+  ctx.font = `italic 400 ${size}px ${FONT.display}`;
+  const wb = ctx.measureText(base).width;
+  ctx.font = `italic 400 ${size * 0.68}px ${FONT.display}`;
+  const ws = ctx.measureText(sub).width;
+  ctx.restore();
+  const x0 = align === "center" ? x - (wb + ws) / 2 : x;
+  text(ctx, base, x0, y, { ...o, size: size / FS, font: FONT.display, weight: "italic 400", align: "left" });
+  text(ctx, sub, x0 + wb, y + size * 0.22, { ...o, size: (size * 0.68) / FS, font: FONT.display, weight: "italic 400", align: "left" });
+}
+
+function arrow(ctx, x0, y0, x1, y1, bend, p, o = {}) {
+  if (p <= 0) return;
+  const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
+  const cx = (x0 + x1) / 2 - (dy / len) * bend, cy = (y0 + y1) / 2 + (dx / len) * bend;
+  const B = s => [
+    (1 - s) * (1 - s) * x0 + 2 * (1 - s) * s * cx + s * s * x1,
+    (1 - s) * (1 - s) * y0 + 2 * (1 - s) * s * cy + s * s * y1,
+  ];
+  const n = 48;
+  ctx.save();
+  ctx.globalAlpha *= o.alpha ?? 1;
+  ctx.strokeStyle = ctx.fillStyle = o.color ?? theme.ink;
+  ctx.lineWidth = o.width ?? 2.4;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  for (let i = 1; i <= n; i++) { const [x, y] = B((i / n) * p); ctx.lineTo(x, y); }
+  ctx.stroke();
+  const [tx, ty] = B(p);
+  const gx = 2 * (1 - p) * (cx - x0) + 2 * p * (x1 - cx), gy = 2 * (1 - p) * (cy - y0) + 2 * p * (y1 - cy);
+  const a = Math.atan2(gy, gx), h = o.head ?? 13;
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(tx - h * Math.cos(a - 0.42), ty - h * Math.sin(a - 0.42));
+  ctx.lineTo(tx - h * Math.cos(a + 0.42), ty - h * Math.sin(a + 0.42));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function timeline(parts) {
+  let t = 0;
+  const segs = parts.map(p => { const s = { ...p, t0: t, t1: t + p.dur }; t += p.dur; return s; });
+  return { segs, dur: t, at(time) {
+    for (const s of segs) if (time < s.t1) return [s, clamp01((time - s.t0) / s.dur)];
+    return [segs[segs.length - 1], 1];
+  } };
+}
+
+/* ------------------------------------------------------------------ player */
+const films = [];
+class Film {
+  constructor(root, prefix, spec) {
+    this.root = root;
+    this.spec = spec;
+    this.stage = root.querySelector(".stage");
+    this.canvas = root.querySelector("canvas");
+    this.ctx = this.canvas.getContext("2d");
+    this.btn = document.getElementById(prefix + "-play");
+    this.scrub = document.getElementById(prefix + "-scrub");
+    this.clock = document.getElementById(prefix + "-clock");
+    this.chapNav = root.querySelector(".chapters");
+    this.tl = spec.timeline;
+    this.t = spec.poster ?? 0;
+    // ?lattice=12.5 / ?alloy=30 opens a film paused at that second
+    const pinned = new URLSearchParams(location.search).get(prefix);
+    if (pinned !== null && isFinite(+pinned)) { this.t = +pinned; this.started = true; this.userPaused = true; }
+    this.playing = false;
+    this.userPaused ??= false;
+    this.started ??= false;
+    this.dirty = true;
+    this.mode = null;
+    root.querySelector(".loading")?.remove();
+
+    this.btn.addEventListener("click", () => {
+      if (this.playing) { this.userPaused = true; this.pause(); }
+      else { this.userPaused = false; if (!this.started) { this.t = 0; this.started = true; } this.play(); }
+    });
+    this.scrub.addEventListener("input", () => {
+      this.started = true;
+      this.t = (this.scrub.value / 1000) * this.tl.dur;
+      this.dirty = true;
+    });
+    for (const s of this.tl.segs.filter(s => s.chap)) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = s.chap;
+      b.addEventListener("click", () => { this.started = true; this.t = s.t0 + 0.001; this.dirty = true; if (!this.playing && !REDUCED) { this.userPaused = false; this.play(); } });
+      s.button = b;
+      this.chapNav.appendChild(b);
+    }
+    new ResizeObserver(() => this.resize()).observe(this.stage);
+    new IntersectionObserver(es => {
+      for (const e of es) {
+        if (e.isIntersecting && e.intersectionRatio >= 0.35) {
+          if (!this.userPaused && !REDUCED && !this.playing) {
+            if (!this.started) { this.t = 0; this.started = true; }
+            this.play();
+          }
+        } else if (this.playing) this.pause();
+      }
+    }, { threshold: [0, 0.35] }).observe(this.stage);
+    spec.attach?.(this);
+    this.resize();
+    this.setButton();
+    films.push(this);
+  }
+  resize() {
+    const cssW = this.stage.clientWidth;
+    const mode = cssW < 640 ? "tall" : "wide";
+    if (mode !== this.mode) {
+      this.mode = mode;
+      const d = this.spec.dims[mode];
+      this.W = d.W; this.H = d.H;
+      this.stage.style.aspectRatio = `${d.W} / ${d.H}`;
+    }
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cssH = (cssW * this.H) / this.W;
+    this.canvas.width = Math.max(1, Math.round(cssW * dpr));
+    this.canvas.height = Math.max(1, Math.round(cssH * dpr));
+    this.scale = (cssW * dpr) / this.W;
+    this.dirty = true;
+  }
+  play() { this.playing = true; this.setButton(); }
+  pause() { this.playing = false; this.setButton(); }
+  invalidate() { this.dirty = true; }
+  setButton() {
+    this.btn.setAttribute("aria-label", this.playing ? "Pause" : "Play");
+    this.btn.innerHTML = this.playing
+      ? '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="2" width="3.6" height="12" rx="1"/><rect x="9.4" y="2" width="3.6" height="12" rx="1"/></svg>'
+      : '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.2v11.6a.6.6 0 0 0 .9.5l9.4-5.8a.6.6 0 0 0 0-1L4.9 1.7a.6.6 0 0 0-.9.5z"/></svg>';
+  }
+  tick(dt) {
+    if (this.playing) {
+      this.t += dt;
+      if (this.t >= this.tl.dur) this.t -= this.tl.dur;
+      this.dirty = true;
+    }
+    if (!this.dirty) return;
+    this.dirty = false;
+    const ctx = this.ctx;
+    FS = this.mode === "tall" ? 1.4 : 1.12;
+    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+    ctx.fillStyle = theme.surface;
+    ctx.fillRect(0, 0, this.W, this.H);
+    this.spec.draw(ctx, this.t, this);
+    this.scrub.value = String(Math.round((this.t / this.tl.dur) * 1000));
+    this.clock.textContent = `${fmtTime(this.t)} / ${fmtTime(this.tl.dur)}`;
+    const [seg] = this.tl.at(this.t);
+    let cur = null;
+    for (const s of this.tl.segs) { if (s.chap && s.t0 <= seg.t0) cur = s; }
+    for (const s of this.tl.segs) if (s.button) s.button.setAttribute("aria-current", String(s === cur));
+  }
+  toLogical(ev) {
+    const r = this.canvas.getBoundingClientRect();
+    return [((ev.clientX - r.left) / r.width) * this.W, ((ev.clientY - r.top) / r.height) * this.H];
+  }
+}
+
+let lastFrame = performance.now();
+function loop(now) {
+  const dt = Math.min(0.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+  for (const f of films) f.tick(dt);
+  requestAnimationFrame(loop);
+}
+
+/* ------------------------------------------------------------------ lattice film */
+const LATTICE_TITLE = {
+  ising: { chap: "Ising 50 × 50", title: "Ising model on a 50 × 50 lattice (D = 2500)", short: "Ising, 50 × 50" },
+  potts: { chap: "Potts 24 × 24", title: "Three-state Potts model on a 24 × 24 lattice (D = 576)", short: "Potts q = 3, 24 × 24" },
+};
+
+function prepLattice(data) {
+  const S = {};
+  for (const key of ["ising", "potts"]) {
+    const d = data[key];
+    const tiles = b64bytes(d.tiles);
+    const thumbs = [];
+    for (let i = 0; i < 81; i++) {
+      const c = document.createElement("canvas");
+      c.width = c.height = d.L;
+      const cx = c.getContext("2d");
+      const img = cx.createImageData(d.L, d.L);
+      for (let j = 0; j < d.D; j++) {
+        const rgb = SPIN_RGB[tiles[i * d.D + j]];
+        img.data[4 * j] = rgb[0]; img.data[4 * j + 1] = rgb[1]; img.data[4 * j + 2] = rgb[2]; img.data[4 * j + 3] = 255;
+      }
+      cx.putImageData(img, 0, 0);
+      thumbs.push(c);
+    }
+    const picks = d.picks.map(p => ({ ...p, xs: b64bytes(p.x), rk: b64u16(p.rank) }));
+    // at a picked grid point the tile is the very draw the film replays
+    for (const p of picks) {
+      const cx = thumbs[p.row * 9 + p.col].getContext("2d");
+      const img = cx.createImageData(d.L, d.L);
+      for (let j = 0; j < d.D; j++) {
+        const rgb = SPIN_RGB[p.xs[j]];
+        img.data[4 * j] = rgb[0]; img.data[4 * j + 1] = rgb[1]; img.data[4 * j + 2] = rgb[2]; img.data[4 * j + 3] = 255;
+      }
+      cx.putImageData(img, 0, 0);
+    }
+    S[key] = { ...d, key, thumbs, picks };
+  }
+  return S;
+}
+
+function latticeGeometry(mode) {
+  if (mode === "wide") return {
+    title: { x: 64, y: 70 }, sub: { x: 64, y: 102 },
+    two: { ising: { x: 150, y: 190, s: 410 }, potts: { x: 730, y: 190, s: 410 } },
+    mosaic: { x: 122, y: 196, s: 392 },
+    panel: { x: 708, y: 178, s: 440 },
+    label: { x: 708, y: 140 },
+    stats: { x: 708, y: 650 },
+    from: p => [p.x - 16, p.y + p.s * 0.42],
+    to: (m, c, r, ts) => [c + ts / 2 + 7, r],
+    bend: -40,
+  };
+  return {
+    title: { x: 40, y: 62 }, sub: { x: 40, y: 100 },
+    two: { ising: { x: 200, y: 190, s: 380 }, potts: { x: 200, y: 690, s: 380 } },
+    mosaic: { x: 112, y: 140, s: 268 },
+    panel: { x: 100, y: 506, s: 520 },
+    label: { x: 410, y: 170 },
+    stats: { x: 100, y: 1068 },
+    from: p => [p.x + p.s * 0.5, p.y - 14],
+    to: (m, c, r, ts) => [c, r + ts / 2 + 7],
+    bend: 40,
+  };
+}
+
+function mosaicLayout(box) {
+  const gap = box.s * 0.014;
+  const ts = (box.s - 8 * gap) / 9;
+  return { gap, ts, cx: i => box.x + i * (ts + gap) + ts / 2, cy: j => box.y + j * (ts + gap) + ts / 2 };
+}
+
+function drawMosaic(ctx, sys, box, o = {}) {
+  const alpha = o.alpha ?? 1;
+  if (alpha <= 0.002) return;
+  const { gap, ts, cx, cy } = mosaicLayout(box);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.imageSmoothingEnabled = false;
+  for (let j = 0; j < 9; j++) for (let i = 0; i < 9; i++) {
+    const a = o.tileAlpha ? o.tileAlpha(i, j) : 1;
+    if (a <= 0) continue;
+    ctx.globalAlpha = alpha * a;
+    ctx.drawImage(sys.thumbs[j * 9 + i], cx(i) - ts / 2, cy(j) - ts / 2, ts, ts);
+  }
+  ctx.globalAlpha = alpha;
+  // axes: beta along the bottom, h up the left side
+  const y0 = box.y + box.s + 12, b = sys.beta, h = sys.h;
+  const fs = 14;
+  ctx.strokeStyle = theme.rule; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx(0), y0); ctx.lineTo(cx(8), y0); ctx.stroke();
+  text(ctx, b[0].toFixed(2), cx(0), y0 + 20, { font: FONT.mono, size: 13, color: theme["ink-2"], align: "center" });
+  text(ctx, b[8].toFixed(2), cx(8), y0 + 20, { font: FONT.mono, size: 13, color: theme["ink-2"], align: "center" });
+  const xc = lerp(cx(0), cx(8), (sys.beta_c - b[0]) / (b[8] - b[0]));
+  ctx.fillStyle = theme.ink;
+  ctx.beginPath(); ctx.moveTo(xc, y0 - 1); ctx.lineTo(xc - 5, y0 + 8); ctx.lineTo(xc + 5, y0 + 8); ctx.closePath(); ctx.fill();
+  subscripted(ctx, "β", "c", xc, y0 + 24, { size: 15, align: "center", color: theme.ink });
+  text(ctx, "β", (cx(0) + cx(8)) / 2 + (Math.abs(xc - (cx(0) + cx(8)) / 2) < 40 ? 70 : 0), y0 + 40, { font: FONT.display, weight: "italic 400", size: 19, align: "center", color: theme.ink });
+  const x0 = box.x - 12;
+  ctx.strokeStyle = theme.rule;
+  ctx.beginPath(); ctx.moveTo(x0, cy(0)); ctx.lineTo(x0, cy(8)); ctx.stroke();
+  text(ctx, signed(h[0], h[0] >= 0.05 ? 2 : 3), x0 - 6, cy(0) + 4, { font: FONT.mono, size: 13, color: theme["ink-2"], align: "right" });
+  text(ctx, "0", x0 - 6, cy(4) + 4, { font: FONT.mono, size: 13, color: theme["ink-2"], align: "right" });
+  text(ctx, signed(h[8], Math.abs(h[8]) >= 0.05 ? 2 : 3), x0 - 6, cy(8) + 4, { font: FONT.mono, size: 13, color: theme["ink-2"], align: "right" });
+  text(ctx, "h", x0 - 34, (cy(0) + cy(8)) / 2 - 22, { font: FONT.display, weight: "italic 400", size: 19, align: "center", color: theme.ink });
+  if (o.caption) text(ctx, o.caption, box.x, box.y - 14, { size: fs + 2, weight: 600, color: theme.ink });
+  // highlighted tile
+  if (o.hi && o.hi.amount > 0) {
+    const { i, j, amount } = o.hi;
+    const pad = 3 + 3 * amount;
+    ctx.globalAlpha = alpha * Math.min(1, amount * 1.6);
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(cx(i) - ts / 2 - pad, cy(j) - ts / 2 - pad, ts + 2 * pad, ts + 2 * pad);
+  }
+  ctx.restore();
+}
+
+function drawLattice(ctx, sys, pick, box, nf, o = {}) {
+  const L = sys.L, D = sys.D, cell = box.s / L;
+  const gap = cell >= 7 ? Math.max(0.6, cell * 0.08) : 0;
+  const r = cell >= 12 ? cell * 0.16 : 0;
+  const n = Math.floor(nf);
+  const recent = Math.max(1, Math.round(D * 0.035));
+  ctx.save();
+  ctx.globalAlpha = o.alpha ?? 1;
+  const groups = [[], [], [], []];                  // mask, state 0, 1, 2
+  for (let d = 0; d < D; d++) {
+    const shown = pick && pick.rk[d] < n;
+    groups[shown ? 1 + pick.xs[d] : 0].push(d);
+  }
+  const fills = [theme.mask, ...SPIN];
+  for (let g = 0; g < 4; g++) {
+    if (!groups[g].length) continue;
+    ctx.fillStyle = fills[g];
+    ctx.beginPath();
+    for (const d of groups[g]) {
+      const x = box.x + (d % L) * cell + gap / 2, y = box.y + Math.floor(d / L) * cell + gap / 2;
+      if (r) ctx.roundRect(x, y, cell - gap, cell - gap, r); else ctx.rect(x, y, cell - gap, cell - gap);
+    }
+    ctx.fill();
+  }
+  if (pick && n > 0 && n < D) {
+    ctx.strokeStyle = theme.ink;
+    ctx.lineWidth = Math.max(0.9, cell * 0.11);
+    ctx.beginPath();
+    for (let d = 0; d < D; d++) {
+      const k = pick.rk[d];
+      if (k < n && k >= n - recent) {
+        const x = box.x + (d % L) * cell + gap / 2, y = box.y + Math.floor(d / L) * cell + gap / 2;
+        ctx.rect(x, y, cell - gap, cell - gap);
+      }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function callIndex(edges, n) {
+  // network calls needed to reveal n sites: the smallest k with edges[k] >= n
+  let lo = 0, hi = edges.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (edges[mid] >= n) hi = mid; else lo = mid + 1; }
+  return lo;
+}
+
+function makeLatticeFilm(data) {
+  const S = prepLattice(data);
+  const keys = ["ising", "potts"];
+  const parts = [{ kind: "intro", dur: 4.4, chap: "Both models" }];
+  keys.forEach((k, si) => {
+    parts.push(si === 0 ? { kind: "focus", sys: k, dur: 1.3, chap: LATTICE_TITLE[k].chap }
+                        : { kind: "swap", from: keys[si - 1], sys: k, dur: 1.3, chap: LATTICE_TITLE[k].chap });
+    S[k].picks.forEach((_, i) => parts.push(
+      { kind: "point", sys: k, i, dur: 1.15 },
+      { kind: "reveal", sys: k, i, dur: 3.9 },
+      { kind: "hold", sys: k, i, dur: 1.6 }));
+  });
+  parts.push({ kind: "outro", sys: keys[keys.length - 1], dur: 3.4 });
+  const tl = timeline(parts);
+
+  function header(ctx, G, title, sub, alpha = 1) {
+    text(ctx, title, G.title.x, G.title.y, { font: FONT.display, weight: 600, size: 30, alpha });
+    if (sub) text(ctx, sub, G.sub.x, G.sub.y, { size: 16, color: theme["ink-2"], alpha });
+  }
+
+  function pickLabels(ctx, G, mode, sys, pick, phase, p, nf) {
+    const lx = G.label.x, ly = G.label.y;
+    const a = phase === "point" ? clamp01(p * 2) : 1;
+    if (mode === "wide") {
+      text(ctx, pick.label, lx, ly - 8, { font: FONT.display, weight: 600, size: 24, alpha: a, halo: true });
+      text(ctx, `β = ${pick.beta.toFixed(4).replace(/0+$/, "").replace(/\.$/, ".0")}   h = ${fmtField(pick.h)}`,
+        lx, ly + 20, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: a, halo: true });
+    } else {
+      const y1 = wrapText(ctx, pick.label, lx, ly, 290, 34, { font: FONT.display, weight: 600, size: 28, alpha: a, halo: true });
+      text(ctx, `β = ${pick.beta}`, lx, y1 + 40, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: a });
+      text(ctx, `h = ${fmtField(pick.h)}`, lx, y1 + 70, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: a });
+    }
+    const n = Math.floor(nf);
+    const sx = G.stats.x;
+    let sy = G.stats.y;
+    const calls = callIndex(sys.edges, n);
+    text(ctx, `revealed ${fmtInt(n)} / ${fmtInt(sys.D)} sites`, sx, sy, { font: FONT.mono, size: 15, color: theme.ink });
+    sy += 24 * FS;
+    text(ctx, `network call ${calls} / ${sys.steps}`, sx, sy, { font: FONT.mono, size: 15, color: theme["ink-2"] });
+    if (phase === "hold") {
+      const ha = clamp01(p * 3);
+      if (sys.key === "ising") {
+        text(ctx, `magnetization m = ${signed(pick.m, 2)}`, sx, sy + 26 * FS, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: ha });
+      } else {
+        const yy = sy + 26 * FS, box = 11 * FS;
+        let x = sx + text(ctx, "states ", sx, yy, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: ha });
+        pick.frac.forEach((f, c) => {
+          ctx.save(); ctx.globalAlpha = ha; ctx.fillStyle = SPIN[c];
+          ctx.beginPath(); ctx.roundRect(x + 2, yy - box, box, box, 2); ctx.fill(); ctx.restore();
+          x += box + 7 + text(ctx, f.toFixed(2) + "  ", x + box + 7, yy, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: ha });
+        });
+      }
+    }
+  }
+
+  function draw(ctx, t, film) {
+    const G = latticeGeometry(film.mode);
+    const [seg, p] = tl.at(t);
+    const two = G.two;
+    if (seg.kind === "intro" || seg.kind === "outro") {
+      const q = seg.kind === "intro" ? 1 : ease(clamp01((p - 0.05) / 0.5));
+      const titleA = seg.kind === "intro" ? 1 : q;
+      header(ctx, G, film.mode === "wide" ? "One network for the whole (β, h) plane" : "One network, all of (β, h)",
+        film.mode === "wide" ? "Each tile is a sample from the same amortized model, conditioned on that tile's inverse temperature β and field h." : "Each tile: one sample at that (β, h).",
+        titleA);
+      for (const k of ["ising", "potts"]) {
+        const box = seg.kind === "outro" && k === seg.sys ? lerpBox(G.mosaic, two[k], q) : two[k];
+        const a = seg.kind === "outro" && k !== seg.sys ? q : 1;
+        drawMosaic(ctx, S[k], box, {
+          alpha: a, caption: LATTICE_TITLE[k].short,
+          tileAlpha: seg.kind === "intro" ? (i, j) => clamp01((p * 4.4 - (i + j) * 0.09) / 0.5) : null,
+        });
+      }
+      if (seg.kind === "outro") {
+        drawLattice(ctx, S[seg.sys], S[seg.sys].picks.at(-1), G.panel, S[seg.sys].D, { alpha: 1 - q });
+      }
+      return;
+    }
+    const sys = S[seg.sys];
+    let titleA = 1;
+    if (seg.kind === "focus" || seg.kind === "swap") {
+      const q = ease(p);
+      if (seg.kind === "focus") {
+        header(ctx, G, LATTICE_TITLE[seg.sys][film.mode === "wide" ? "title" : "short"], film.mode === "wide" ? "Pick a condition on the training grid, then watch the sampler reveal a configuration there." : "Pick a condition, watch it build.", q);
+        for (const k of ["ising", "potts"]) {
+          if (k === seg.sys) drawMosaic(ctx, S[k], lerpBox(two[k], G.mosaic, q), { caption: q < 0.5 ? LATTICE_TITLE[k].short : null });
+          else drawMosaic(ctx, S[k], two[k], { alpha: 1 - q, caption: LATTICE_TITLE[k].short });
+        }
+      } else {
+        const prev = S[seg.from];
+        const tk = film.mode === "wide" ? "title" : "short";
+        header(ctx, G, LATTICE_TITLE[seg.from][tk], null, 1 - q);
+        header(ctx, G, LATTICE_TITLE[seg.sys][tk], film.mode === "wide" ? "Same recipe, three states instead of two, and a field that favors state 0." : "Three states; the field favors state 0.", q);
+        drawMosaic(ctx, prev, G.mosaic, { alpha: 1 - q });
+        drawLattice(ctx, prev, prev.picks.at(-1), G.panel, prev.D, { alpha: 1 - q });
+        drawMosaic(ctx, sys, G.mosaic, { alpha: q });
+      }
+      drawLattice(ctx, sys, null, G.panel, 0, { alpha: seg.kind === "focus" ? q : q });
+      return;
+    }
+    // point / reveal / hold
+    header(ctx, G, LATTICE_TITLE[seg.sys][film.mode === "wide" ? "title" : "short"], null, titleA);
+    const pick = sys.picks[seg.i];
+    const { ts, cx, cy } = mosaicLayout(G.mosaic);
+    const amount = seg.kind === "point" ? easeOut(clamp01(p * 1.5)) : 1;
+    drawMosaic(ctx, sys, G.mosaic, { hi: { i: pick.col, j: pick.row, amount } });
+    // earlier picks of this system stay marked, faintly
+    ctx.save();
+    ctx.strokeStyle = theme["ink-2"]; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.55; ctx.setLineDash([3, 3]);
+    for (let i = 0; i < seg.i; i++) {
+      const q = sys.picks[i];
+      if (q.col === pick.col && q.row === pick.row) continue;
+      ctx.strokeRect(cx(q.col) - ts / 2 - 3, cy(q.row) - ts / 2 - 3, ts + 6, ts + 6);
+    }
+    ctx.restore();
+    const [ax, ay] = G.from(G.panel);
+    const [bx, by] = G.to(G.mosaic, cx(pick.col), cy(pick.row), ts);
+    const ap = seg.kind === "point" ? ease(clamp01(p / 0.85)) : 1;
+    arrow(ctx, ax, ay, bx, by, G.bend, ap, { color: theme.ink, alpha: seg.kind === "hold" ? 1 - 0.6 * p : 1 });
+    let nf = 0;
+    if (seg.kind === "reveal") nf = ease(p) * sys.D;
+    if (seg.kind === "hold") nf = sys.D;
+    drawLattice(ctx, sys, pick, G.panel, nf);
+    pickLabels(ctx, G, film.mode, sys, pick, seg.kind, p, nf);
+  }
+
+  return { timeline: tl, poster: 4.3, dims: { wide: { W: 1280, H: 720 }, tall: { W: 720, H: 1180 } }, draw };
+}
+
+/* ------------------------------------------------------------------ alloy film */
+const ALLOY_TITLE = {
+  agpd125: { chap: "Ag–Pd", title: "Ag–Pd on a 5 × 5 × 5 fcc cell (D = 125)", short: "Ag–Pd (D = 125)" },
+  cuau128: { chap: "Cu–Au", title: "Cu–Au on an 8 × 4 × 4 fcc cell (D = 128)", short: "Cu–Au (D = 128)" },
+};
+
+function sphereSprite(rgb) {
+  const N = 128, c = document.createElement("canvas");
+  c.width = c.height = N;
+  const g = c.getContext("2d");
+  const light = rgb.map(v => Math.round(v + (255 - v) * 0.6));
+  const dark = rgb.map(v => Math.round(v * 0.52));
+  const grad = g.createRadialGradient(N * 0.36, N * 0.34, N * 0.04, N * 0.5, N * 0.5, N * 0.5);
+  grad.addColorStop(0, `rgb(${light})`);
+  grad.addColorStop(0.45, `rgb(${rgb})`);
+  grad.addColorStop(1, `rgb(${dark})`);
+  g.fillStyle = grad;
+  g.beginPath(); g.arc(N / 2, N / 2, N / 2 - 1, 0, Math.PI * 2); g.fill();
+  return c;
+}
+
+// a 4 x 4 x 4 block of conventional cells: 256 atoms, about two images per site
+const CUBE_CELLS = 4;
+
+function inv3(m) {
+  const [[a, b, c], [d, e, f], [g, h, i]] = m;
+  const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
+  const det = a * A + b * B + c * C;
+  return [
+    [A / det, -(b * i - c * h) / det, (b * f - c * e) / det],
+    [B / det, (a * i - c * g) / det, -(a * f - c * d) / det],
+    [C / det, -(a * h - b * g) / det, (a * e - b * d) / det],
+  ];
+}
+
+function prepAlloy(data) {
+  const S = {};
+  for (const key of ["agpd125", "cuau128"]) {
+    const d = data[key];
+    const P = d.positions;
+    const prim = d.cell.map((v, i) => v.map(x => x / d.size[i]));
+    // The simulation cell is a skewed stack of primitive cells, which hides
+    // the ordering.  It is periodic, so it is drawn as a cube of conventional
+    // fcc cells cut from the periodic crystal: faces are {100} planes, where
+    // L1_2 and L1_0 order shows as checkerboards and alternating layers.
+    // Each cube atom is the periodic image of one site of the cell.
+    const Pinv = inv3(prim);
+    const ijkOf = r => [0, 1, 2].map(l => Math.round(r[0] * Pinv[0][l] + r[1] * Pinv[1][l] + r[2] * Pinv[2][l]));
+    const siteOf = new Map(P.map((pos, site) => [ijkOf(pos).join(","), site]));
+    const a = Math.hypot(...prim[0]) * Math.SQRT2;
+    const n = CUBE_CELLS, half = (n * a - a / 2) / 2;
+    const atoms = [];
+    for (let i = 0; i < 2 * n; i++) for (let j = 0; j < 2 * n; j++) for (let k = 0; k < 2 * n; k++) {
+      if ((i + j + k) % 2) continue;
+      const r = [i * a / 2, j * a / 2, k * a / 2];
+      const m = ijkOf(r).map((v, l) => ((v % d.size[l]) + d.size[l]) % d.size[l]);
+      const site = siteOf.get(m.join(","));
+      if (site === undefined) throw new Error("cube atom maps to no site");
+      atoms.push({ p: r.map(v => v - half), site });
+    }
+    const nn = a / Math.SQRT2;
+    const R = Math.hypot(half, half, half) + 0.45 * nn;
+    const points = d.points.map((q, i) => ({
+      ...q, xs: b64bytes(q.x), rk: b64u16(q.rank),
+      same: i > 0 && d.points[i - 1].T === q.T && d.points[i - 1].dmu === q.dmu,
+    }));
+    S[key] = {
+      ...d, key, atoms, nn, R, points,
+      sprites: { 0: sphereSprite(ELEMENT_RGB[d.down]), 1: sphereSprite(ELEMENT_RGB[d.up]) },
+    };
+  }
+  return S;
+}
+
+function alloyGeometry(mode) {
+  if (mode === "wide") return {
+    title: { x: 64, y: 70 }, sub: { x: 64, y: 102 },
+    two: { agpd125: { x: 150, y: 200, w: 420, h: 380 }, cuau128: { x: 730, y: 200, w: 420, h: 380 } },
+    plot: { x: 128, y: 212, w: 400, h: 370 },
+    view: { x: 930, y: 420, r: 232 },
+    label: { x: 640, y: 150 },
+    note: { x: 128, y: 672, w: 420 },
+    stats: { x: 640, y: 664 },
+    legend: { x: 1216, y: 664 },
+    from: v => [v.x - v.r * 0.78, v.y],
+    bend: 50,
+  };
+  return {
+    title: { x: 40, y: 62 }, sub: { x: 40, y: 100 },
+    two: { agpd125: { x: 130, y: 190, w: 540, h: 330 }, cuau128: { x: 130, y: 690, w: 540, h: 330 } },
+    plot: { x: 130, y: 140, w: 540, h: 300 },
+    view: { x: 360, y: 850, r: 210 },
+    label: { x: 40, y: 540 },
+    note: { x: 40, y: 606, w: 640 },
+    stats: { x: 40, y: 1100 },
+    legend: { x: 680, y: 1160 },
+    from: v => [v.x, v.y - v.r * 0.82],
+    bend: -30,
+  };
+}
+
+function plotMap(box) {
+  return { X: c => box.x + c * box.w, Y: T => box.y + box.h - ((T - 200) / 700) * box.h };
+}
+
+function drawDiagram(ctx, sys, box, o = {}) {
+  const alpha = o.alpha ?? 1;
+  if (alpha <= 0.002) return;
+  const { X, Y } = plotMap(box);
+  const pd = sys.phase_diagram;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineJoin = "round";
+  // frame and grid
+  ctx.strokeStyle = theme.rule; ctx.lineWidth = 1;
+  for (const T of [400, 600, 800]) { ctx.beginPath(); ctx.moveTo(box.x, Y(T)); ctx.lineTo(box.x + box.w, Y(T)); ctx.stroke(); }
+  ctx.strokeStyle = theme["ink-2"];
+  ctx.strokeRect(box.x, box.y, box.w, box.h);
+  const lines = (ls, style) => {
+    for (const l of ls) {
+      ctx.beginPath();
+      l.forEach(([c, T], i) => (i ? ctx.lineTo(X(c), Y(T)) : ctx.moveTo(X(c), Y(T))));
+      ctx.stroke();
+    }
+  };
+  ctx.strokeStyle = theme.accent; ctx.globalAlpha = alpha * 0.22; ctx.lineWidth = 1.2;
+  lines(pd.dsi_ties);
+  ctx.globalAlpha = alpha; ctx.lineWidth = 2.4;
+  lines(pd.dsi_bounds);
+  ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
+  lines(pd.ref_bounds);
+  ctx.setLineDash([]);
+  // ticks
+  for (const c of [0, 0.25, 0.5, 0.75, 1]) {
+    text(ctx, c === 0 || c === 1 ? String(c) : String(c), X(c), box.y + box.h + 22, { font: FONT.mono, size: 13, color: theme["ink-2"], align: "center" });
+  }
+  for (const T of [200, 400, 600, 800]) {
+    text(ctx, String(T), box.x - 8, Y(T) + 4, { font: FONT.mono, size: 13, color: theme["ink-2"], align: "right" });
+  }
+  text(ctx, `composition c (fraction ${sys.up})`, box.x + box.w / 2, box.y + box.h + 46, { size: 14, color: theme.ink, align: "center" });
+  ctx.save();
+  ctx.translate(box.x - 52, box.y + box.h / 2);
+  ctx.rotate(-Math.PI / 2);
+  text(ctx, "T (K)", 0, 0, { size: 14, color: theme.ink, align: "center" });
+  ctx.restore();
+  if (o.caption) text(ctx, o.caption, box.x, box.y - 14, { size: 16, weight: 600 });
+  if (o.legend) {
+    const lx = box.x + box.w - 150, ly = box.y + 18;
+    ctx.fillStyle = theme.surface; ctx.globalAlpha = alpha * 0.9;
+    ctx.fillRect(lx - 8, ly - 12, 154, 44);
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = theme.accent; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 26, ly); ctx.stroke();
+    text(ctx, "DIG-IN", lx + 34, ly + 4, { size: 12.5, color: theme.ink });
+    ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
+    ctx.beginPath(); ctx.moveTo(lx, ly + 20); ctx.lineTo(lx + 26, ly + 20); ctx.stroke(); ctx.setLineDash([]);
+    text(ctx, "reference", lx + 34, ly + 24, { size: 12.5, color: theme.ink });
+  }
+  // markers: earlier draws small, the current one ringed
+  for (const m of o.markers ?? []) {
+    const x = X(m.c), y = Y(m.T);
+    ctx.globalAlpha = alpha * (m.alpha ?? 1);
+    if (m.active) {
+      ctx.fillStyle = theme.surface; ctx.strokeStyle = theme.ink; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = theme.ink;
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+      if (m.pulse > 0) {
+        ctx.globalAlpha = alpha * (1 - m.pulse) * 0.7;
+        ctx.beginPath(); ctx.arc(x, y, 7 + 18 * m.pulse, 0, Math.PI * 2); ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = theme["ink-2"];
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawCell(ctx, sys, point, view, nf, yaw, pitch, o = {}) {
+  const alpha = o.alpha ?? 1;
+  if (alpha <= 0.002) return;
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const f = sys.R * 7;
+  const scale = (view.r / sys.R) * 0.98;
+  const proj = ([x, y, z]) => {
+    const x1 = x * cy - y * sy, y1 = x * sy + y * cy;
+    const x2 = x1 * cp + z * sp, z2 = -x1 * sp + z * cp;
+    const k = f / (f + x2);
+    return [view.x + y1 * k * scale, view.y - z2 * k * scale, x2, k];
+  };
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const D = sys.D, rad = sys.nn * 0.36 * scale;
+  const order = sys.atoms.map(at => { const q = proj(at.p); return [q[2], at.site, q]; });
+  order.sort((a, b) => b[0] - a[0]);
+  for (const [, d, q] of order) {
+    const [x, y, , k] = q;
+    const rk = point ? point.rk[d] : D;
+    const shade = 0.82 + 0.18 * (k - 0.9) / 0.2;
+    if (rk < nf) {
+      const pop = clamp01((nf - rk) / 2.2);
+      const s = rad * k * (0.55 + 0.45 * easeOut(pop));
+      ctx.globalAlpha = alpha * Math.min(1, Math.max(0.55, shade));
+      ctx.drawImage(sys.sprites[point.xs[d]], x - s, y - s, 2 * s, 2 * s);
+    } else {
+      const s = rad * k * 0.42;
+      ctx.globalAlpha = alpha * 0.75;
+      ctx.fillStyle = theme.surface;
+      ctx.strokeStyle = theme["ink-2"];
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(x, y, s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function makeAlloyFilm(data) {
+  const S = prepAlloy(data);
+  const keys = ["agpd125", "cuau128"];
+  const parts = [{ kind: "intro", dur: 4.2, chap: "Both alloys" }];
+  keys.forEach((k, si) => {
+    parts.push(si === 0 ? { kind: "focus", sys: k, dur: 1.4, chap: ALLOY_TITLE[k].chap }
+                        : { kind: "swap", from: keys[si - 1], sys: k, dur: 1.4, chap: ALLOY_TITLE[k].chap });
+    S[k].points.forEach((_, i) => parts.push(
+      { kind: "point", sys: k, i, dur: 1.3 },
+      { kind: "reveal", sys: k, i, dur: 4.6 },
+      { kind: "hold", sys: k, i, dur: 2.4 }));
+  });
+  parts.push({ kind: "outro", sys: keys[keys.length - 1], dur: 3.4 });
+  const tl = timeline(parts);
+  const user = { yaw: 0, pitch: 0 };
+
+  const header = (ctx, G, title, sub, alpha = 1) => {
+    text(ctx, title, G.title.x, G.title.y, { font: FONT.display, weight: 600, size: 30, alpha });
+    if (sub) text(ctx, sub, G.sub.x, G.sub.y, { size: 16, color: theme["ink-2"], alpha });
+  };
+  const angles = t => [0.5 + t * ((2 * Math.PI) / 40) + user.yaw, 0.4 + user.pitch];
+
+  function legend(ctx, G, sys, alpha) {
+    const y = G.legend.y;
+    const items = [[sys.sprites[0], sys.down], [sys.sprites[1], sys.up]];
+    ctx.save();
+    ctx.font = `400 ${14 * FS}px ${FONT.body}`;
+    const dot = 16 * FS;
+    const width = items.reduce((w, [, name]) => w + dot + 22 + ctx.measureText(name).width, 0) + 16 + ctx.measureText("masked").width;
+    let x = G.legend.x - width;
+    ctx.globalAlpha = alpha;
+    for (const [spr, name] of items) {
+      ctx.drawImage(spr, x, y - dot * 0.82, dot, dot);
+      x += dot + 6 + text(ctx, name, x + dot + 6, y, { size: 14, alpha }) + 16;
+    }
+    ctx.globalAlpha = alpha * 0.75;
+    ctx.fillStyle = theme.surface; ctx.strokeStyle = theme["ink-2"]; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(x + dot * 0.38, y - dot * 0.32, dot * 0.3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    text(ctx, "masked", x + dot * 0.38 + 10, y, { size: 14, color: theme["ink-2"], alpha });
+    ctx.restore();
+  }
+
+  function draw(ctx, t, film) {
+    const G = alloyGeometry(film.mode);
+    const [seg, p] = tl.at(t);
+    const [yaw, pitch] = angles(t);
+    if (seg.kind === "intro" || seg.kind === "outro") {
+      const q = seg.kind === "intro" ? 1 : ease(clamp01((p - 0.05) / 0.5));
+      header(ctx, G, film.mode === "wide" ? "One sampler per alloy, every condition" : "One sampler per alloy",
+        film.mode === "wide" ? "Conditioned on temperature T and chemical-potential difference Δμ. Its free energies give the phase boundaries." : "Conditioned on (T, Δμ).",
+        seg.kind === "intro" ? 1 : q);
+      for (const k of keys) {
+        const box = seg.kind === "outro" && k === seg.sys
+          ? { x: lerp(G.plot.x, G.two[k].x, q), y: lerp(G.plot.y, G.two[k].y, q), w: lerp(G.plot.w, G.two[k].w, q), h: lerp(G.plot.h, G.two[k].h, q) }
+          : G.two[k];
+        const a = seg.kind === "outro" && k !== seg.sys ? q : 1;
+        const markers = seg.kind === "outro" ? S[k].points.map(m => ({ c: m.c, T: m.T, alpha: k === seg.sys ? 1 : q })) : [];
+        drawDiagram(ctx, S[k], box, { alpha: a * (seg.kind === "intro" ? clamp01(p * 3 - (k === keys[1] ? 0.4 : 0)) : 1), caption: ALLOY_TITLE[k].short, legend: k === keys[1], markers });
+      }
+      if (seg.kind === "outro") {
+        const last = S[seg.sys].points.at(-1);
+        drawCell(ctx, S[seg.sys], last, G.view, S[seg.sys].D, yaw, pitch, { alpha: 1 - q });
+      }
+      return;
+    }
+    const sys = S[seg.sys];
+    if (seg.kind === "focus" || seg.kind === "swap") {
+      const q = ease(p);
+      if (seg.kind === "focus") {
+        header(ctx, G, ALLOY_TITLE[seg.sys][film.mode === "wide" ? "title" : "short"], film.mode === "wide" ? "Point into a region of the diagram and let the sampler place the atoms." : "Point at a region, watch it build.", q);
+        for (const k of keys) {
+          if (k === seg.sys) {
+            const b = G.two[k], e = G.plot;
+            drawDiagram(ctx, S[k], { x: lerp(b.x, e.x, q), y: lerp(b.y, e.y, q), w: lerp(b.w, e.w, q), h: lerp(b.h, e.h, q) }, { caption: q < 0.5 ? ALLOY_TITLE[k].short : null });
+          } else drawDiagram(ctx, S[k], G.two[k], { alpha: 1 - q, caption: ALLOY_TITLE[k].short, legend: true });
+        }
+      } else {
+        const prev = S[seg.from];
+        const tk = film.mode === "wide" ? "title" : "short";
+        header(ctx, G, ALLOY_TITLE[seg.from][tk], null, 1 - q);
+        header(ctx, G, ALLOY_TITLE[seg.sys][tk], "Three ordered compounds: Cu₃Au, CuAu and CuAu₃.", q);
+        drawDiagram(ctx, prev, G.plot, { alpha: 1 - q, markers: prev.points.map(m => ({ c: m.c, T: m.T })) });
+        drawCell(ctx, prev, prev.points.at(-1), G.view, prev.D, yaw, pitch, { alpha: 1 - q });
+        drawDiagram(ctx, sys, G.plot, { alpha: q, legend: true });
+      }
+      drawCell(ctx, sys, null, G.view, 0, yaw, pitch, { alpha: q });
+      legend(ctx, G, sys, q);
+      return;
+    }
+    // point / reveal / hold
+    header(ctx, G, ALLOY_TITLE[seg.sys][film.mode === "wide" ? "title" : "short"], null);
+    const pt = sys.points[seg.i];
+    const markers = sys.points.slice(0, seg.i).map(m => ({ c: m.c, T: m.T }));
+    const pulse = seg.kind === "point" ? clamp01(p * 1.4) : 0;
+    markers.push({ c: pt.c, T: pt.T, active: true, pulse, alpha: seg.kind === "point" ? clamp01(p * 3) : 1 });
+    drawDiagram(ctx, sys, G.plot, { legend: true, markers });
+    const { X, Y } = plotMap(G.plot);
+    const [ax, ay] = G.from(G.view);
+    const mx = X(pt.c), my = Y(pt.T);
+    const dirx = ax - mx, diry = ay - my, dl = Math.hypot(dirx, diry);
+    const ap = seg.kind === "point" ? ease(clamp01(p / 0.85)) : 1;
+    arrow(ctx, ax, ay, mx + (dirx / dl) * 13, my + (diry / dl) * 13, G.bend, ap, { alpha: seg.kind === "hold" ? 1 - 0.6 * p : 1 });
+    let nf = 0;
+    if (seg.kind === "reveal") nf = ease(p) * sys.D;
+    if (seg.kind === "hold") nf = sys.D;
+    drawCell(ctx, sys, pt, G.view, nf, yaw, pitch);
+    // captions
+    const la = seg.kind === "point" ? clamp01(p * 2) : 1;
+    text(ctx, pt.label, G.label.x, G.label.y, { font: FONT.display, weight: 600, size: 24, alpha: la, halo: true });
+    const cond = `T = ${pt.T.toFixed(0)} K   Δμ = ${signed(pt.dmu, 2)} eV`;
+    text(ctx, cond, G.label.x, G.label.y + 8 + 22 * FS, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: la, halo: true });
+    if (pt.same) wrapText(ctx, "Same condition as the previous draw: the sampler also returns the coexisting phase.", G.note.x, G.note.y, G.note.w, 20 * FS, { size: 14, color: theme.accent, alpha: la, halo: true });
+    const n = Math.floor(nf);
+    text(ctx, `sites placed ${n} / ${sys.D}`, G.stats.x, G.stats.y, { font: FONT.mono, size: 15 });
+    if (seg.kind === "hold") text(ctx, `c(${sys.up}) = ${pt.c.toFixed(3)}`, G.stats.x, G.stats.y + 24 * FS, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: clamp01(p * 3) });
+    legend(ctx, G, sys, 1);
+  }
+
+  function attach(film) {
+    let drag = null;
+    film.canvas.addEventListener("pointerdown", ev => {
+      const [x, y] = film.toLogical(ev);
+      const v = alloyGeometry(film.mode).view;
+      if (Math.hypot(x - v.x, y - v.y) > v.r * 1.1) return;
+      drag = { x: ev.clientX, y: ev.clientY, yaw: user.yaw, pitch: user.pitch };
+      film.canvas.setPointerCapture(ev.pointerId);
+    });
+    film.canvas.addEventListener("pointermove", ev => {
+      if (!drag) return;
+      user.yaw = drag.yaw + (ev.clientX - drag.x) * 0.01;
+      user.pitch = Math.max(-1.2, Math.min(1.2, drag.pitch + (ev.clientY - drag.y) * 0.01));
+      film.invalidate();
+    });
+    const end = () => { drag = null; };
+    film.canvas.addEventListener("pointerup", end);
+    film.canvas.addEventListener("pointercancel", end);
+  }
+
+  return { timeline: tl, poster: 4.1, dims: { wide: { W: 1280, H: 720 }, tall: { W: 720, H: 1180 } }, draw, attach };
+}
+
+/* ------------------------------------------------------------------ page */
+(function tokens() {
+  const el = document.getElementById("tokens");
+  const n = 24;
+  const order = [...Array(n).keys()].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement("span");
+    const state = [0, 0, 1, 0, 2, 1, 0, 1, 2, 2, 0, 1, 1, 0, 2, 0, 1, 2, 0, 0, 1, 2, 1, 0][i];
+    s.style.setProperty("--c", SPIN[state]);
+    s.style.animationDelay = `${0.25 + order[i] * 0.07}s`;
+    el.appendChild(s);
+  }
+})();
+
+document.querySelectorAll("[data-code-link]").forEach(a => {
+  if (CODE_URL) {
+    a.href = CODE_URL;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.querySelector("small")?.remove();
+    if (!a.querySelector("svg")) a.textContent = "Code";
+  } else {
+    a.addEventListener("click", ev => ev.preventDefault());
+  }
+});
+
+document.getElementById("copy-bib").addEventListener("click", ev => {
+  const btn = ev.currentTarget;
+  const pre = document.getElementById("bibtex");
+  const done = msg => { btn.textContent = msg; setTimeout(() => { btn.textContent = "Copy BibTeX"; }, 1800); };
+  const select = () => { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(pre.textContent).then(() => done("Copied"), () => { select(); done("Selected, press Ctrl+C"); });
+  else { select(); done("Selected, press Ctrl+C"); }
+});
+
+readTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readTheme);
+new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+Promise.all([
+  fetch("assets/lattice.json").then(r => r.json()),
+  fetch("assets/alloy.json").then(r => r.json()),
+]).then(([lat, alloy]) => {
+  new Film(document.getElementById("film-lattice"), "lattice", makeLatticeFilm(lat));
+  new Film(document.getElementById("film-alloy"), "alloy", makeAlloyFilm(alloy));
+  document.fonts?.ready.then(() => films.forEach(f => f.invalidate()));
+  requestAnimationFrame(loop);
+}).catch(err => {
+  document.querySelectorAll(".stage .loading").forEach(el => { el.textContent = "Could not load the trajectory data (" + err.message + ")."; });
+});
+</script>
+</body>
+</html>
