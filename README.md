@@ -27,7 +27,7 @@ python -m http.server 8000
 
 and open http://localhost:8000/.
 
-## Code link
+## Code
 
-The "Code" buttons are placeholders. Set `CODE_URL` at the top of the script in
-`index.html` to the repository URL once it is public.
+The code that reproduces the paper's experiments is at
+https://github.com/jiajunhe98/DIG-IN-Fixed-point-neural-samplers-on-discrete-spaces.

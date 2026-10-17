@@ -226,7 +226,7 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
     <div class="authors">
       <span>Jiajun He<sup>1*</sup></span>
       <span>Denis Blessing<sup>2*</sup></span>
-      <span>Mouyang Chen<sup>3</sup></span>
+      <span>Mouyang Cheng<sup>3</sup></span>
       <span>Yuanqi Du<sup>4†</sup></span>
       <span>Carles Domingo-Enrich<sup>4†</sup></span>
     </div>
@@ -242,9 +242,9 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 2.5h6.5L15.5 6.5V17.5H5z"/><path d="M11.5 2.5v4h4"/><path d="M7.5 10.5h5M7.5 13.5h5"/></svg>
         Paper <small>arXiv</small>
       </a>
-      <a class="btn" href="#" data-code-link>
+      <a class="btn" href="https://github.com/jiajunhe98/DIG-IN-Fixed-point-neural-samplers-on-discrete-spaces" target="_blank" rel="noopener">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 6 3 10l4 4M13 6l4 4-4 4"/></svg>
-        Code <small>coming soon</small>
+        Code <small>GitHub</small>
       </a>
     </div>
   </header>
@@ -314,7 +314,7 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
     </div>
 <pre id="bibtex">@article{he2026fixedpoint,
   title   = {Fixed-point neural samplers on discrete spaces},
-  author  = {He, Jiajun and Blessing, Denis and Chen, Mouyang
+  author  = {He, Jiajun and Blessing, Denis and Cheng, Mouyang
              and Du, Yuanqi and Domingo-Enrich, Carles},
   journal = {arXiv preprint arXiv:2610.01739},
   year    = {2026}
@@ -325,7 +325,7 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
 <footer>
   <div class="wide">
     <span>DIG-IN · Discrete Gibbs Iterative Neural Sampler</span>
-    <span><a href="https://arxiv.org/pdf/2610.01739" target="_blank" rel="noopener">Paper</a> · <a href="#" data-code-link>Code (coming soon)</a></span>
+    <span><a href="https://arxiv.org/pdf/2610.01739" target="_blank" rel="noopener">Paper</a> · <a href="https://github.com/jiajunhe98/DIG-IN-Fixed-point-neural-samplers-on-discrete-spaces" target="_blank" rel="noopener">Code</a></span>
   </div>
 </footer>
 
@@ -333,9 +333,6 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
 "use strict";
 
 /* ------------------------------------------------------------------ basics */
-// Repository link: replace null with the URL once the code is public.
-const CODE_URL = null;
-
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const FONT = {
   display: '"Source Serif 4", Georgia, "Times New Roman", serif',
@@ -763,13 +760,6 @@ function drawLattice(ctx, sys, pick, box, nf, o = {}) {
   ctx.restore();
 }
 
-function callIndex(edges, n) {
-  // network calls needed to reveal n sites: the smallest k with edges[k] >= n
-  let lo = 0, hi = edges.length - 1;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (edges[mid] >= n) hi = mid; else lo = mid + 1; }
-  return lo;
-}
-
 function makeLatticeFilm(data) {
   const S = prepLattice(data);
   const keys = ["ising", "potts"];
@@ -804,11 +794,8 @@ function makeLatticeFilm(data) {
     }
     const n = Math.floor(nf);
     const sx = G.stats.x;
-    let sy = G.stats.y;
-    const calls = callIndex(sys.edges, n);
+    const sy = G.stats.y;
     text(ctx, `revealed ${fmtInt(n)} / ${fmtInt(sys.D)} sites`, sx, sy, { font: FONT.mono, size: 15, color: theme.ink });
-    sy += 24 * FS;
-    text(ctx, `network call ${calls} / ${sys.steps}`, sx, sy, { font: FONT.mono, size: 15, color: theme["ink-2"] });
     if (phase === "hold") {
       const ha = clamp01(p * 3);
       if (sys.key === "ising") {
@@ -1271,17 +1258,6 @@ function makeAlloyFilm(data) {
   }
 })();
 
-document.querySelectorAll("[data-code-link]").forEach(a => {
-  if (CODE_URL) {
-    a.href = CODE_URL;
-    a.target = "_blank";
-    a.rel = "noopener";
-    a.querySelector("small")?.remove();
-    if (!a.querySelector("svg")) a.textContent = "Code";
-  } else {
-    a.addEventListener("click", ev => ev.preventDefault());
-  }
-});
 
 document.getElementById("copy-bib").addEventListener("click", ev => {
   const btn = ev.currentTarget;
