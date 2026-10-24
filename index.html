@@ -144,7 +144,15 @@ i.v { font-family: var(--font-display); font-size: 1.08em; }
   padding: clamp(10px, 2.2vw, 26px);
   overflow-x: auto;
 }
-.plate img { display: block; width: 100%; min-width: 34rem; height: auto; margin-inline: auto; }
+.plate img, .plate svg { display: block; width: 100%; min-width: 34rem; height: auto; margin-inline: auto; }
+/* the method film: opening scenes over the figure, and one line of narration per segment,
+   all stacked in one cell so the block keeps the height of the longest line */
+.layers, .narration { display: grid; }
+.layers > *, .narration > * { grid-area: 1 / 1; }
+.narration p { visibility: hidden; }
+.narration p.on { visibility: visible; }
+.narration b { font-weight: 600; }
+.narration sup, .narration sub { line-height: 0; }
 figcaption { font-size: 0.93rem; color: var(--ink-2); width: 100%; max-width: var(--measure); margin-inline: auto; }
 figcaption b { color: var(--ink); font-weight: 600; }
 
@@ -260,11 +268,20 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
     </ul>
   </section>
 
-  <figure class="wide figure" aria-labelledby="fig1-cap">
+  <figure class="wide figure" id="film-method" aria-labelledby="fig1-cap">
+    <div class="narration" hidden></div>
     <div class="plate">
-      <img src="assets/fig_algorithm.svg" alt="The DIG-IN training loop in five panels: 1, simulate and weight by revealing sites with the model and computing importance weights; 2, temper the weights with ESS control; 3, store samples, Gibbs labels and tempered weights in a replay buffer; 4, draw a minibatch and mask sites at a random time; 5, take a gradient step on the weighted soft cross-entropy with local Gibbs scores as labels." width="1100" height="515">
+      <div class="layers">
+        <img src="assets/fig_algorithm.svg" alt="The DIG-IN training loop in five panels: 1, simulate and weight by revealing sites with the model and computing importance weights; 2, temper the weights with ESS control; 3, store samples, Gibbs labels and tempered weights in a replay buffer; 4, draw a minibatch and mask sites at a random time; 5, take a gradient step on the weighted soft cross-entropy with local Gibbs scores as labels." width="1100" height="515">
+      </div>
     </div>
-    <figcaption id="fig1-cap"><b>One DIG-IN iteration.</b> Data collection, importance-weight smoothing with ESS control, and a parameter update with a weighted cross-entropy whose labels are local Gibbs scores.</figcaption>
+    <div class="controls" hidden>
+      <button class="play" type="button" id="method-play" aria-label="Play"></button>
+      <input class="scrub" type="range" id="method-scrub" min="0" max="1000" value="0" aria-label="Seek">
+      <span class="clock" id="method-clock">0:00 / 0:00</span>
+      <div class="chapters" role="group" aria-label="Chapters"></div>
+    </div>
+    <figcaption id="fig1-cap"><b>How DIG-IN works.</b> The target and its energy, the denoiser and its Gibbs labels, then one training iteration as in Figure 1 of the paper: data collection, importance-weight smoothing with ESS control, and a parameter update with a weighted cross-entropy whose labels are local Gibbs scores.</figcaption>
   </figure>
 
   <section class="wide film-section" id="alloys" aria-labelledby="alloys-h">
@@ -491,9 +508,10 @@ class Film {
   constructor(root, prefix, spec) {
     this.root = root;
     this.spec = spec;
-    this.stage = root.querySelector(".stage");
+    // a spec without a canvas animates DOM nodes inside its own stage
+    this.stage = spec.stage ?? root.querySelector(".stage");
     this.canvas = root.querySelector("canvas");
-    this.ctx = this.canvas.getContext("2d");
+    this.ctx = this.canvas?.getContext("2d");
     this.btn = document.getElementById(prefix + "-play");
     this.scrub = document.getElementById(prefix + "-scrub");
     this.clock = document.getElementById(prefix + "-clock");
@@ -512,7 +530,7 @@ class Film {
 
     this.btn.addEventListener("click", () => {
       if (this.playing) { this.userPaused = true; this.pause(); }
-      else { this.userPaused = false; if (!this.started) { this.t = 0; this.started = true; } this.play(); }
+      else { this.userPaused = false; if (!this.started || this.t >= this.tl.dur) { this.t = 0; this.started = true; } this.play(); }
     });
     this.scrub.addEventListener("input", () => {
       this.started = true;
@@ -544,6 +562,7 @@ class Film {
     films.push(this);
   }
   resize() {
+    if (!this.canvas) return;
     const cssW = this.stage.clientWidth;
     const mode = cssW < 640 ? "tall" : "wide";
     if (mode !== this.mode) {
@@ -571,16 +590,22 @@ class Film {
   tick(dt) {
     if (this.playing) {
       this.t += dt;
-      if (this.t >= this.tl.dur) this.t -= this.tl.dur;
+      if (this.t >= this.tl.dur) {
+        // a film played once comes to rest on its last frame
+        if (this.spec.once) { this.t = this.tl.dur; this.userPaused = true; this.pause(); }
+        else this.t -= this.tl.dur;
+      }
       this.dirty = true;
     }
     if (!this.dirty) return;
     this.dirty = false;
     const ctx = this.ctx;
-    FS = this.mode === "tall" ? 1.4 : 1.12;
-    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
-    ctx.fillStyle = theme.surface;
-    ctx.fillRect(0, 0, this.W, this.H);
+    if (ctx) {
+      FS = this.mode === "tall" ? 1.4 : 1.12;
+      ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+      ctx.fillStyle = theme.surface;
+      ctx.fillRect(0, 0, this.W, this.H);
+    }
     this.spec.draw(ctx, this.t, this);
     this.scrub.value = String(Math.round((this.t / this.tl.dur) * 1000));
     this.clock.textContent = `${fmtTime(this.t)} / ${fmtTime(this.tl.dur)}`;
@@ -601,6 +626,221 @@ function loop(now) {
   lastFrame = now;
   for (const f of films) f.tick(dt);
   requestAnimationFrame(loop);
+}
+
+/* ------------------------------------------------------------------ method film */
+// A short introduction to the method: three opening scenes (assets/method_intro.svg,
+// drawn by tools/make_method_intro.py), then Figure 1 (assets/fig_algorithm.svg) built up
+// one step at a time, each with a line of narration. Both SVGs name their parts (data-k).
+// A cue is [part, start, duration, effect, stagger]: the start is in seconds from the
+// beginning of its segment, the stagger is either a delay between successive parts of
+// that name or a list of offsets, one per part, and a part's data-delay adds to both.
+const SVG_NS = "http://www.w3.org/2000/svg";
+const v = s => `<i class="v">${s}</i>`;
+const METHOD_SCENES = [
+  { scene: "a", chap: "The target", dur: 13,
+    say: `We want to sample configurations ${v("x")}: ${v("D")} sites, each holding one of |${v("A")}| symbols, from ${v("π")}(${v("x")}) = e<sup>−${v("U")}(${v("x")})</sup>/${v("Z")}. The energy ${v("U")} is cheap to evaluate for any ${v("x")}; in the Potts model it counts equal neighbours. But there is no data to learn from, and ${v("Z")} sums over all |${v("A")}|<sup>${v("D")}</sup> configurations.`,
+    cues: [
+      ["a-site", 0.3, 0.35, "zoom"],
+      ["a-lab", 1.1, 0.5, "rise"],
+      ["a-pi", 1.8, 1, "wipe"],
+      ["a-u", 3.3, 0.5, "rise"],
+      ["a-potts", 5, 0.5, "rise"],
+      ["a-bonds", 5.6, 0.8, "fade"],
+      ["a-z", 8, 0.5, "rise"],
+    ] },
+  { scene: "b", chap: "The denoiser", dur: 15,
+    say: `The sampler is a masked-diffusion denoiser ${v("μ")}<sub>${v("θ")}</sub>. It starts with every site hidden, then repeatedly picks a hidden site ${v("d")}, predicts a distribution over its symbols from the revealed sites ${v("X")}<sub>${v("R")}</sub>, and draws one. Multiplying the probabilities of these draws gives ${v("q")}<sub>${v("θ")}</sub>(${v("X")}), the probability of the finished sample.`,
+    cues: [
+      ["b-row", 0.3, 0.4, "fade"],
+      ["b-rowlab", 0.6, 0.4, "fade"],
+      ["b-net", 0.8, 0.5, "fade"],
+      ["b-hl", 1.6, 2.2, "flash"],
+      ["b-bars", 1.9, 1.9, "flash"],
+      ["b-bar", 1.95, 0.4, "grow"],
+      ["b-barlab", 1.9, 6.7, "flash"],
+      ["b-curve", 2.6, 1.1, "flash"],
+      ["swap", 3, 0.45, "pop"],
+      ["b-f1", 2.2, 0.9, "wipe"],
+      ["b-f1n", 3, 0.5, "rise"],
+      ["b-f2", 9.8, 1, "wipe"],
+      ["b-f2n", 10.6, 0.5, "rise"],
+      ["b-f3", 11.9, 1, "wipe"],
+      ["b-f3n", 12.7, 0.5, "rise"],
+    ] },
+  { scene: "c", chap: "Gibbs labels", dur: 16,
+    say: `What should the denoiser learn, with no data? For a complete configuration, replace site ${v("d")} by every symbol ${v("c")} and compare energies. Normalizing the Boltzmann factors gives the Gibbs label ${v("h")}<sup>${v("d")}</sup>(${v("c")} | ${v("x")}<sup>−${v("d")}</sup>): exactly the target's conditional at site ${v("d")}, a discrete analogue of the score. Only energy differences enter, so ${v("Z")} cancels.`,
+    cues: [
+      ["c-grid", 0.3, 0.5, "fade"],
+      ["c-lab", 0.8, 0.5, "rise"],
+      ["c-focus", 1.4, 0.6, "fade"],
+      ["c-rep", 2.4, 0.5, "rise"],
+      ["c-plus", 2.8, 0.5, "slide"],
+      ["c-du", 4.2, 0.4, "fade"],
+      ["c-def", 4.6, 0.6, "rise"],
+      ["c-arrow", 6.4, 0.5, "wipe"],
+      ["c-norm", 6.5, 0.5, "fade"],
+      ["c-base", 6.9, 0.3, "fade"],
+      ["c-bar", 7, 0.6, "grow"],
+      ["c-val", 7.6, 0.4, "fade"],
+      ["c-h", 8.6, 1.6, "wipe"],
+      ["c-p", 10.6, 0.9, "wipe"],
+      ["c-pn", 11.4, 0.5, "rise"],
+      ["c-z", 12.8, 0.5, "rise"],
+    ] },
+];
+const METHOD_STEPS = [
+  { chap: "1 · Simulate & weight", title: "Step 1 · Simulate and weight", dur: 9,
+    say: `Training repeats one loop. First the current denoiser generates samples, revealing sites as above. Since ${v("q")}<sub>${v("θ")}</sub>(${v("X")}) is known, the importance weight ${v("w")} = e<sup>−${v("U")}(${v("X")})</sup>/${v("q")}<sub>${v("θ")}</sub>(${v("X")}) says how much more, or less, likely the target finds each sample than the sampler does.`,
+    cues: [
+      ["s1-text", 0.3, 0.6, "rise"],
+      ["s1-row", 0.9, 0.35, "fade", 1],
+      ["s1-arrow", 0.9, 3.6, "wipe"],
+      ["new", 2.3, 0.45, "pop", [0, 1, 1.15, 2, 2.15, 2.3]],
+      ["s1-weight", 5.2, 0.9, "wipe"],
+    ] },
+  { chap: "2 · Temper", title: "Step 2 · Temper", dur: 8,
+    say: `Early in training a few samples can carry almost all of the weight. Raising the weights to a power ${v("ν")} ≤ 1 flattens them; ${v("ν")}<sup>⋆</sup> is the largest exponent that keeps the effective sample size above a fraction ${v("ξ")} of the buffer size ${v("B")}.`,
+    cues: [
+      ["arrow", 0, 0.5, "wipe"],
+      ["s2-base", 0.6, 0.3, "fade", [0, 2.2]],
+      ["s2-raw", 0.8, 0.5, "grow", 0.08],
+      ["s2-raw-label", 1.4, 0.4, "fade"],
+      ["s2-nu", 2.2, 0.6, "wipe"],
+      ["s2-temp", 2.9, 0.9, "temper", 0.06],
+      ["s2-temp-label", 3.6, 0.4, "fade"],
+      ["s2-ess", 4.6, 0.7, "rise"],
+    ] },
+  { chap: "3 · Replay buffer", title: "Step 3 · Replay buffer", dur: 6.5,
+    say: "Each sample is stored together with its Gibbs labels and its tempered weight, so that it can be reused over several gradient steps.",
+    cues: [
+      ["arrow", 0, 0.5, "wipe"],
+      ["s3-card", 0.6, 0.5, "slide", 0.22],
+      ["s3-line", 1.9, 0.5, "rise", 0.4],
+    ] },
+  { chap: "4 · Mask", title: "Step 4 · Mask", dur: 8,
+    say: `For training, buffered samples are partly hidden again, as in masked diffusion: draw a time ${v("t")} and hide each site with probability 1 − ${v("β")}<sub>${v("t")}</sub>.`,
+    cues: [
+      ["arrow", 0, 0.5, "wipe"],
+      ["arrow-label", 0.2, 0.5, "fade"],
+      ["s4-x", 0.8, 0.5, "drop"],
+      ["s4-x-label", 1.1, 0.4, "fade"],
+      ["s4-arrow", 1.7, 1.7, "wipe"],
+      ["s4-line", 1.8, 0.45, "rise", 0.4],
+      ["s4-xr", 3.4, 0.4, "fade"],
+      ["s4-xr-label", 3.5, 0.4, "fade"],
+      ["hide", 4.1, 0.4, "pop", 0.35],
+    ] },
+  { chap: "5 · Gradient step", title: "Step 5 · Gradient step", dur: 9,
+    say: "At every hidden site the denoiser's prediction is fitted to the Gibbs label by a cross-entropy, weighted by the tempered weight. Compared with the one symbol actually observed, the soft label has the same optimum but lower variance.",
+    cues: [
+      ["arrow", 0, 0.5, "wipe"],
+      ["s5-loss", 0.7, 1.8, "wipe"],
+      ["s5-brace", 2.9, 0.45, "brace", 0.8],
+      ["s5-label", 3.05, 0.45, "rise", 0.8],
+    ] },
+];
+const METHOD_LOOP = { chap: "Repeat", dur: 7.5,
+  say: `Then ${v("θ")} is updated and the loop starts again with fresh samples. If the sampler already matches the target, an iteration leaves it unchanged: the target is a fixed point, and under idealized conditions the iteration provably converges to it.`,
+  cues: [
+    ["arrow", 0, 0.5, "wipe"],
+    ["arrow-label", 0.2, 0.5, "fade"],
+  ] };
+// steps not yet reached show only their faint outline; finished ones step back
+const GHOST = 0.2, DONE = 0.45;
+
+function makeMethodFilm(intro, fig, narration) {
+  const tl = timeline([...METHOD_SCENES, ...METHOD_STEPS.map((s, i) => ({ ...s, n: i + 1 })), { ...METHOD_LOOP, loop: true }]);
+  const stepSegs = tl.segs.filter(s => s.n), loopSeg = tl.segs.at(-1);
+  const steps = [...fig.querySelectorAll("[data-step]")];
+  const scenes = new Map(tl.segs.filter(s => s.scene).map(s => [s, intro.querySelector(`[data-scene="${s.scene}"]`)]));
+  const lines = tl.segs.map(s => {
+    const p = narration.appendChild(document.createElement("p"));
+    p.innerHTML = `<b>${s.title ?? s.chap}.</b> ${s.say}`;
+    return p;
+  });
+  const anims = [];
+  for (const seg of tl.segs) {
+    const scope = seg.scene ? scenes.get(seg) : seg.loop ? fig.querySelector('[data-k="loop"]') : steps[seg.n - 1];
+    for (const [k, at, dur, fx, stagger = 0] of seg.cues) {
+      scope.querySelectorAll(`[data-k="${k}"]`).forEach((el, i) => {
+        const bb = el.getBBox();
+        const a = {
+          el, fx, dur, p: -1,
+          t0: seg.t0 + at + (Array.isArray(stagger) ? stagger[i] : i * stagger) + (+el.dataset.delay || 0),
+          cx: bb.x + bb.width / 2, cy: bb.y + bb.height / 2, base: bb.y + bb.height,
+        };
+        if (fx === "wipe") {
+          const clip = el.ownerSVGElement.querySelector("defs").appendChild(document.createElementNS(SVG_NS, "clipPath"));
+          clip.id = `method-wipe-${anims.length}`;
+          a.rect = clip.appendChild(document.createElementNS(SVG_NS, "rect"));
+          a.clip = `url(#${clip.id})`;
+          a.dir = el.dataset.dir ?? "r";
+          a.box = [bb.x - 2, bb.y - 2, bb.width + 4, bb.height + 4];
+        }
+        // a site changing state: the new look pops in over a copy of the old one
+        if (fx === "pop") { a.under = el.querySelector('[data-k="under"]'); a.top = el.querySelector('[data-k="top"]'); }
+        // a tempered bar starts at the height of its raw bar and settles
+        if (fx === "temper") a.from = scope.querySelectorAll('[data-k="s2-raw"]')[i].getBBox().height / bb.height;
+        anims.push(a);
+      });
+    }
+  }
+
+  const about = (x, y, sx, sy) => `translate(${x} ${y}) scale(${sx} ${sy}) translate(${-x} ${-y})`;
+  function apply(a, t) {
+    const p = clamp01((t - a.t0) / a.dur);
+    if (p === a.p) return;
+    a.p = p;
+    const e = easeOut(p), el = a.el;
+    const show = (op, tf) => { el.setAttribute("opacity", op); if (tf) el.setAttribute("transform", tf); };
+    switch (a.fx) {
+      case "fade": show(e); break;
+      case "rise": show(e, `translate(0 ${3 * (1 - e)})`); break;
+      case "drop": show(e, `translate(0 ${-6 * (1 - e)})`); break;
+      case "slide": show(e, `translate(${-14 * (1 - e)} 0)`); break;
+      case "zoom": show(e, about(a.cx, a.cy, 0.4 + 0.6 * e, 0.4 + 0.6 * e)); break;
+      // in, hold, out: for things that are only there for a moment
+      case "flash": show(Math.min(1, (p * a.dur) / 0.3, ((1 - p) * a.dur) / 0.3)); break;
+      case "grow": show(clamp01(p * 4), about(a.cx, a.base, 1, e)); break;
+      case "temper": show(clamp01(p * 3), about(a.cx, a.base, 1, lerp(a.from, 1, ease(p)))); break;
+      case "brace": show(e, about(a.cx, a.cy, e, 1)); break;
+      case "pop":
+        a.under.setAttribute("opacity", p < 1 ? 1 : 0);
+        a.top.setAttribute("opacity", e);
+        a.top.setAttribute("transform", about(a.cx, a.cy, 0.5 + 0.5 * e, 0.5 + 0.5 * e));
+        break;
+      case "wipe": {
+        if (p >= 1) { el.removeAttribute("clip-path"); break; }
+        const [x, y, w, h] = a.box, q = ease(p);
+        const r = { r: [x, y, w * q, h], l: [x + w * (1 - q), y, w * q, h], d: [x, y, w, h * q], u: [x, y + h * (1 - q), w, h * q] }[a.dir];
+        ["x", "y", "width", "height"].forEach((k, j) => a.rect.setAttribute(k, r[j]));
+        el.setAttribute("clip-path", a.clip);
+      }
+    }
+  }
+
+  function focus(s, t) {
+    if (t < s.t0) return GHOST;
+    if (t < s.t1) return lerp(GHOST, 1, ease(clamp01((t - s.t0) / 0.4)));
+    const done = lerp(1, DONE, ease(clamp01((Math.min(t, loopSeg.t0) - s.t1) / 0.5)));
+    return t < loopSeg.t0 ? done : lerp(done, 1, ease(clamp01((t - loopSeg.t0 - 0.2) / 0.6)));
+  }
+
+  let shown = null;
+  function draw(ctx, t) {
+    const [seg] = tl.at(t);
+    const line = lines[tl.segs.indexOf(seg)];
+    if (line !== shown) { shown?.classList.remove("on"); line.classList.add("on"); shown = line; }
+    line.style.opacity = ease(clamp01((t - seg.t0) / 0.4));
+    // each scene fades in and out; the figure fades in once the steps begin
+    for (const [s, g] of scenes) g.setAttribute("opacity", Math.min(clamp01((t - s.t0) / 0.4), clamp01((s.t1 - t) / 0.4)));
+    fig.style.opacity = ease(clamp01((t - stepSegs[0].t0) / 0.5));
+    steps.forEach((g, i) => g.setAttribute("opacity", focus(stepSegs[i], t)));
+    for (const a of anims) apply(a, t);
+  }
+
+  return { timeline: tl, poster: tl.dur, once: true, stage: fig.closest(".plate"), draw };
 }
 
 /* ------------------------------------------------------------------ lattice film */
@@ -1272,6 +1512,30 @@ readTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readTheme);
 new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
+// the figure is swapped for an inline copy that can be animated, with the opening scenes
+// layered on top; if either fails to load, the image stays
+Promise.all(["assets/method_intro.svg", "assets/fig_algorithm.svg"].map(url =>
+  fetch(url).then(r => (r.ok ? r.text() : Promise.reject(new Error(r.status)))),
+)).then(([introSrc, figSrc]) => {
+  const root = document.getElementById("film-method");
+  const img = root.querySelector(".plate img");
+  const parse = src => {
+    const svg = document.importNode(new DOMParser().parseFromString(src, "image/svg+xml").documentElement, true);
+    if (svg.localName !== "svg") throw new Error("not an SVG");
+    return svg;
+  };
+  const fig = parse(figSrc), intro = parse(introSrc);
+  fig.setAttribute("role", "img");
+  fig.setAttribute("aria-label", img.alt);
+  // the narration above carries what the scenes say
+  intro.setAttribute("aria-hidden", "true");
+  img.replaceWith(fig);
+  fig.after(intro);
+  const narration = root.querySelector(".narration");
+  narration.hidden = root.querySelector(".controls").hidden = false;
+  new Film(root, "method", makeMethodFilm(intro, fig, narration));
+}).catch(() => {});
+
 Promise.all([
   fetch("assets/lattice.json").then(r => r.json()),
   fetch("assets/alloy.json").then(r => r.json()),
@@ -1279,10 +1543,10 @@ Promise.all([
   new Film(document.getElementById("film-lattice"), "lattice", makeLatticeFilm(lat));
   new Film(document.getElementById("film-alloy"), "alloy", makeAlloyFilm(alloy));
   document.fonts?.ready.then(() => films.forEach(f => f.invalidate()));
-  requestAnimationFrame(loop);
 }).catch(err => {
   document.querySelectorAll(".stage .loading").forEach(el => { el.textContent = "Could not load the trajectory data (" + err.message + ")."; });
 });
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
