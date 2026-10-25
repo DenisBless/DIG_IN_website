@@ -222,7 +222,6 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
   border-radius: 8px; border: 1px solid var(--rule); background: var(--surface); cursor: pointer;
 }
 .episodes .name { font-size: 0.86rem; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
-.episodes .ret { font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink-2); }
 .rl-results { margin-block: 0.4rem 1.2rem; }
 
 @media (max-width: 560px) {
@@ -353,13 +352,11 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
         <span class="clock" id="rl-clock">0:00 / 0:00</span>
         <div class="chapters" role="group" aria-label="Chapters"></div>
       </div>
-      <p class="fine">The densities in the first two chapters are illustrations. The categoricals, the sampled action, the critic's values and the labels in the next two are one draw of a policy trained on WalkerWalk, at a state of its episode below.</p>
     </div>
     <div class="col prose rl-results">
-      <p>On the 20 continuous control tasks of the DeepMind Control suite in MuJoCo Playground, with 1 to 6 action dimensions, DIG-IN reaches a final interquartile mean return of 0.917 [0.908,&nbsp;0.923] (returns divided by 1000, 10 seeds per task), the highest among the Gaussian, diffusion and flow policies we compare against, ahead of TRUDI (0.906) and AMDP (0.895). The returns of the baselines are those reported by Blessing, Celik and Neumann (2026).</p>
+      <p>20 continuous control tasks of the DeepMind Control suite in MuJoCo Playground</p>
     </div>
     <ul class="episodes" id="episodes" aria-label="Episodes of DIG-IN policies on the 20 DeepMind Control tasks"></ul>
-    <p class="fine">One episode per task, 1000 control steps shown in real time. For this page we retrained every task with the released code and the settings of the paper, with the two seeds that reached the highest final return in the paper (one for ReacherEasy and WalkerStand), and recorded 64 greedy episodes of each trained policy. Shown is the best episode of the policy with the higher mean return; its return is given first (at most 1000), then the mean return of all 64. Click a video to pause it.</p>
   </section>
 
   <section class="col cite" id="citation" aria-labelledby="cite-h">
@@ -2166,14 +2163,12 @@ function buildEpisodes(index) {
     v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
     v.poster = `assets/rl/${task}.jpg`;
     v.src = `assets/rl/${task}.mp4`;
-    v.setAttribute("aria-label", `${task}: one episode of the trained policy, return ${Math.round(e.return)}; mean return over ${e.episodes} episodes ${Math.round(e.mean)}`);
+    v.setAttribute("aria-label", `${task}: one episode of the trained policy`);
     v.addEventListener("click", () => {
       if (v.paused) { delete v.dataset.paused; v.play().catch(() => {}); } else { v.dataset.paused = "1"; v.pause(); }
     });
     li.appendChild(document.createElement("span")).className = "name";
     li.lastChild.textContent = task;
-    li.appendChild(document.createElement("span")).className = "ret";
-    li.lastChild.textContent = `return ${Math.round(e.return)} · mean of ${e.episodes}: ${Math.round(e.mean)}`;
     io.observe(v);
   }
 }
