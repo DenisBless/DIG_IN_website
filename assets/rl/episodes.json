@@ -1,0 +1,182 @@
+{
+ "AcrobotSwingup": {
+  "return": 822.9,
+  "mean": 421.0,
+  "episodes": 64,
+  "seed": 5,
+  "fps": 50.0,
+  "frames": 500,
+  "seconds": 10.0
+ },
+ "AcrobotSwingupSparse": {
+  "return": 525.0,
+  "mean": 128.6,
+  "episodes": 64,
+  "seed": 2,
+  "fps": 50.0,
+  "frames": 500,
+  "seconds": 10.0
+ },
+ "BallInCup": {
+  "return": 975.0,
+  "mean": 975.0,
+  "episodes": 64,
+  "seed": 5,
+  "fps": 50.0,
+  "frames": 1000,
+  "seconds": 20.0
+ },
+ "CartpoleBalance": {
+  "return": 999.9,
+  "mean": 999.8,
+  "episodes": 64,
+  "seed": 5,
+  "fps": 50.0,
+  "frames": 500,
+  "seconds": 10.0
+ },
+ "CartpoleBalanceSparse": {
+  "return": 1000.0,
+  "mean": 1000.0,
+  "episodes": 64,
+  "seed": 0,
+  "fps": 50.0,
+  "frames": 500,
+  "seconds": 10.0
+ },
+ "CartpoleSwingup": {
+  "return": 867.6,
+  "mean": 867.1,
+  "episodes": 64,
+  "seed": 9,
+  "fps": 50.0,
+  "frames": 500,
+  "seconds": 10.0
+ },
+ "CartpoleSwingupSparse": {
+  "return": 847.0,
+  "mean": 686.2,
+  "episodes": 64,
+  "seed": 4,
+  "fps": 50.0,
+  "frames": 500,
+  "seconds": 10.0
+ },
+ "CheetahRun": {
+  "return": 933.7,
+  "mean": 927.2,
+  "episodes": 64,
+  "seed": 2,
+  "fps": 50.0,
+  "frames": 500,
+  "seconds": 10.0
+ },
+ "FingerSpin": {
+  "return": 999.0,
+  "mean": 987.1,
+  "episodes": 64,
+  "seed": 5,
+  "fps": 50.0,
+  "frames": 1000,
+  "seconds": 20.0
+ },
+ "FingerTurnEasy": {
+  "return": 1000.0,
+  "mean": 976.5,
+  "episodes": 64,
+  "seed": 6,
+  "fps": 50.0,
+  "frames": 1000,
+  "seconds": 20.0
+ },
+ "FingerTurnHard": {
+  "return": 1000.0,
+  "mean": 967.5,
+  "episodes": 64,
+  "seed": 4,
+  "fps": 50.0,
+  "frames": 1000,
+  "seconds": 20.0
+ },
+ "FishSwim": {
+  "return": 979.5,
+  "mean": 620.4,
+  "episodes": 64,
+  "seed": 7,
+  "fps": 25.0,
+  "frames": 1000,
+  "seconds": 40.0
+ },
+ "HopperHop": {
+  "return": 362.3,
+  "mean": 341.0,
+  "episodes": 64,
+  "seed": 9,
+  "fps": 50.0,
+  "frames": 1000,
+  "seconds": 20.0
+ },
+ "HopperStand": {
+  "return": 994.5,
+  "mean": 958.9,
+  "episodes": 64,
+  "seed": 5,
+  "fps": 50.0,
+  "frames": 1000,
+  "seconds": 20.0
+ },
+ "PendulumSwingup": {
+  "return": 1000.0,
+  "mean": 798.3,
+  "episodes": 64,
+  "seed": 8,
+  "fps": 50.0,
+  "frames": 1000,
+  "seconds": 20.0
+ },
+ "ReacherEasy": {
+  "return": 1000.0,
+  "mean": 983.7,
+  "episodes": 64,
+  "seed": 5,
+  "fps": 50.0,
+  "frames": 1000,
+  "seconds": 20.0
+ },
+ "ReacherHard": {
+  "return": 998.0,
+  "mean": 979.5,
+  "episodes": 64,
+  "seed": 2,
+  "fps": 50.0,
+  "frames": 1000,
+  "seconds": 20.0
+ },
+ "WalkerRun": {
+  "return": 887.5,
+  "mean": 862.8,
+  "episodes": 64,
+  "seed": 3,
+  "fps": 40.0,
+  "frames": 1000,
+  "seconds": 25.0
+ },
+ "WalkerStand": {
+  "return": 999.9,
+  "mean": 985.9,
+  "episodes": 64,
+  "seed": 9,
+  "fps": 40.0,
+  "frames": 1000,
+  "seconds": 25.0
+ },
+ "WalkerWalk": {
+  "return": 995.6,
+  "mean": 974.3,
+  "episodes": 64,
+  "seed": 9,
+  "fps": 40.0,
+  "frames": 1000,
+  "seconds": 25.0
+ }
+}

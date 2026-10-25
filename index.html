@@ -214,9 +214,21 @@ figcaption b { color: var(--ink); font-weight: 600; }
 footer { border-top: 1px solid var(--rule); padding-block: 1.6rem 2.4rem; font-size: 0.88rem; color: var(--ink-2); }
 footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.6rem 1.5rem; }
 
+/* ---------- episode gallery */
+.episodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.4rem, 1fr)); gap: 1rem 0.8rem; margin: 0; padding: 0; list-style: none; }
+.episodes li { display: grid; gap: 0.3rem; align-content: start; }
+.episodes video {
+  display: block; width: 100%; aspect-ratio: 1; object-fit: cover;
+  border-radius: 8px; border: 1px solid var(--rule); background: var(--surface); cursor: pointer;
+}
+.episodes .name { font-size: 0.86rem; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+.episodes .ret { font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink-2); }
+.rl-results { margin-block: 0.4rem 1.2rem; }
+
 @media (max-width: 560px) {
   main { gap: 3.2rem; padding-block: 2.2rem 3rem; }
   .facts li { grid-template-columns: 1fr; gap: 0.15rem; }
+  .episodes { grid-template-columns: repeat(2, 1fr); }
   h2 { font-size: 1.55rem; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -265,6 +277,7 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
       <li><span>Ising &amp; Potts</span><span>The only method in our comparison that covers every mode in the ordered phase while also giving accurate ln&nbsp;<i class="v">Z</i>.</span></li>
       <li><span>Amortized</span><span>One sampler conditioned on (<i class="v">β</i>, <i class="v">h</i>), on lattices up to <i class="v">D</i>&nbsp;=&nbsp;2500 sites.</span></li>
       <li><span>Alloys</span><span>Recovers the phase diagrams of Ag–Pd and Cu–Au from a single sampler conditioned on (<i class="v">T</i>, Δ<i class="v">μ</i>).</span></li>
+      <li><span>RL</span><span>As a binned policy for continuous control, the highest final return among the Gaussian, diffusion and flow policies we compare against on 20 DeepMind Control tasks.</span></li>
     </ul>
   </section>
 
@@ -322,6 +335,31 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
       </div>
       <p class="fine">Every trajectory is a draw from the trained checkpoint, recorded call by call. Grey cells are still masked. Outlined cells were revealed in the most recent calls. Each thumbnail is one draw at its grid point; at the points the film visits, it is the draw being replayed.</p>
     </div>
+  </section>
+
+  <section class="wide film-section" id="rl" aria-labelledby="rl-h">
+    <div class="col prose intro">
+      <h2 id="rl-h">Maximum entropy reinforcement learning</h2>
+      <p>In maximum entropy reinforcement learning, the improved policy at every state <i class="v">s</i> is the Boltzmann distribution of the soft action value, <i class="v">π</i>(<i class="v">a</i>&nbsp;|&nbsp;<i class="v">s</i>) ∝ exp(<i class="v">Q</i>(<i class="v">s</i>,&nbsp;<i class="v">a</i>)/<i class="v">τ</i>). Learning the policy is thus an amortized sampling problem over states, whose energy is a learned critic. Most policies for continuous control represent the action directly, as a Gaussian, diffusion or flow model. We instead cut every action dimension into 64 bins and use DIG-IN's masked denoiser, conditioned on the state, as the policy, trained on Gibbs labels read from the critic.</p>
+    </div>
+    <div class="film" id="film-rl">
+      <div class="stage">
+        <canvas role="img" aria-label="Animated sequence: Gaussian, diffusion and flow policies as densities over a continuous action box; the box cut into 64 by 64 bins; a trained binned policy revealing the six action dimensions of a walker one network call at a time; and the Gibbs label the critic gives for one dimension."></canvas>
+        <div class="loading">Loading the policy…</div>
+      </div>
+      <div class="controls">
+        <button class="play" type="button" id="rl-play" aria-label="Play"></button>
+        <input class="scrub" type="range" id="rl-scrub" min="0" max="1000" value="0" aria-label="Seek">
+        <span class="clock" id="rl-clock">0:00 / 0:00</span>
+        <div class="chapters" role="group" aria-label="Chapters"></div>
+      </div>
+      <p class="fine">The densities in the first two chapters are illustrations. The categoricals, the sampled action, the critic's values and the labels in the next two are one draw of a policy trained on WalkerWalk, at a state of its episode below.</p>
+    </div>
+    <div class="col prose rl-results">
+      <p>On the 20 continuous control tasks of the DeepMind Control suite in MuJoCo Playground, with 1 to 6 action dimensions, DIG-IN reaches a final interquartile mean return of 0.917 [0.908,&nbsp;0.923] (returns divided by 1000, 10 seeds per task), the highest among the Gaussian, diffusion and flow policies we compare against, ahead of TRUDI (0.906) and AMDP (0.895). The returns of the baselines are those reported by Blessing, Celik and Neumann (2026).</p>
+    </div>
+    <ul class="episodes" id="episodes" aria-label="Episodes of DIG-IN policies on the 20 DeepMind Control tasks"></ul>
+    <p class="fine">One episode per task, 1000 control steps shown in real time. For this page we retrained every task with the released code and the settings of the paper, with the two seeds that reached the highest final return in the paper (one for ReacherEasy and WalkerStand), and recorded 64 greedy episodes of each trained policy. Shown is the best episode of the policy with the higher mean return; its return is given first (at most 1000), then the mean return of all 64. Click a video to pause it.</p>
   </section>
 
   <section class="col cite" id="citation" aria-labelledby="cite-h">
@@ -1484,6 +1522,662 @@ function makeAlloyFilm(data) {
   return { timeline: tl, poster: 4.1, dims: { wide: { W: 1280, H: 720 }, tall: { W: 720, H: 1180 } }, draw, attach };
 }
 
+/* ------------------------------------------------------------------ RL film */
+// Continuous versus binned policies, then the binned policy of a trained checkpoint drawing
+// one action, one dimension per network call, and the Gibbs labels the critic gives for one
+// dimension of that action (assets/rl.json and assets/rl/state.jpg, written by
+// tools/make_rl_data.py).
+const SUP = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+const sup = n => String(n).split("").map(c => SUP[+c]).join("");
+const hexRGB = h => [1, 3, 5].map(i => parseInt(h.trim().slice(i, i + 2), 16));
+const rgba = (c, a = 1) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+// bins are coloured by their action value: -1 blue, 0 grey, +1 rose
+const MID_RGB = [214, 220, 226];
+function binRGB(l, L) {
+  const u = ((l + 0.5) / L) * 2 - 1, c = SPIN_RGB[u < 0 ? 0 : 1], w = Math.pow(Math.abs(u), 0.7);
+  return MID_RGB.map((m, i) => Math.round(lerp(m, c[i], w)));
+}
+const fmtA = a => (a < 0 ? "−" : "+") + Math.abs(a).toFixed(2);
+// a small seeded generator, so that the drawn samples are the same on every visit
+function seeded(seed) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const normal = r => Math.sqrt(-2 * Math.log(Math.max(1e-9, r()))) * Math.cos(2 * Math.PI * r());
+// keeps the illustrated samples and paths inside the action box
+const inBox = v => Math.max(-0.88, Math.min(0.88, v));
+// action coordinates in [-1, 1]^2 -> canvas, for a square box b
+const boxMap = b => ({ X: a => b.x + ((a + 1) / 2) * b.s, Y: a => b.y + (1 - (a + 1) / 2) * b.s });
+
+function rlGeometry(mode) {
+  if (mode === "wide") return {
+    title: { x: 64, y: 70 }, sub: { x: 64, y: 102, w: 1150 },
+    cont: [{ x: 110, y: 196, s: 290 }, { x: 495, y: 196, s: 290 }, { x: 880, y: 196, s: 290 }],
+    contLabel: b => ({ x: b.x + b.s / 2, y: b.y + b.s + 56, align: "center" }),
+    bins: { x: 130, y: 170, s: 420 }, right: { x: 670, y: 210, w: 540 },
+    img: { x: 64, y: 172, s: 236 }, net: { x: 352, y: 238, w: 176, h: 100 },
+    rows: { x: 640, y: 172, w: 576, h: 474 },
+    limg: { x: 64, y: 190, s: 168 }, ltok: { x: 262, y: 228, w: 330, ts: 46, gap: 8 }, form: { x: 64, y: 500, size: 19 },
+    q: { x: 660, y: 206, w: 544, h: 124 }, lab: { x: 660, y: 458, w: 544, h: 150 },
+    foot: { x: 64, y: 682, w: 1150 },
+  };
+  return {
+    title: { x: 40, y: 62 }, sub: { x: 40, y: 98, w: 640 },
+    cont: [{ x: 86, y: 230, s: 236 }, { x: 86, y: 540, s: 236 }, { x: 86, y: 850, s: 236 }],
+    contLabel: b => ({ x: b.x + b.s + 48, y: b.y + b.s / 2 - 10, align: "left" }),
+    bins: { x: 150, y: 220, s: 420 }, right: { x: 40, y: 760, w: 640 },
+    img: { x: 40, y: 190, s: 200 }, net: { x: 300, y: 236, w: 176, h: 100 },
+    rows: { x: 100, y: 470, w: 576, h: 560 },
+    limg: { x: 40, y: 262, s: 140 }, ltok: { x: 210, y: 290, w: 470, ts: 52, gap: 18 }, form: { x: 40, y: 1080, size: 23 },
+    q: { x: 100, y: 500, w: 576, h: 150 }, lab: { x: 100, y: 780, w: 576, h: 170 },
+    foot: { x: 40, y: 1092, w: 640 },
+  };
+}
+
+function makeRLFilm(data, img) {
+  const m = data.m, L = data.L;
+  const parts = [{ kind: "cont", dur: 13.5, chap: "Continuous policies" },
+                 { kind: "bins", dur: 12.5, chap: "Binned actions" },
+                 { kind: "gen0", dur: 3, chap: "Drawing an action" }];
+  for (let k = 0; k < m; k++) parts.push({ kind: "step", k, dur: k < 2 ? 3.4 : 1.9 });
+  parts.push({ kind: "gen1", dur: 6.5 }, { kind: "label", dur: 34.5, chap: "Gibbs labels" });
+  const tl = timeline(parts);
+  // the step at which every dimension is revealed, and the log-likelihood after each step
+  const stepOf = Array(m);
+  data.order.forEach((d, k) => { stepOf[d] = k; });
+  const logp = [];
+  data.order.reduce((s, d, k) => { s += Math.log(Math.max(1e-12, data.probs[k][data.z[d]])); logp.push(s); return s; }, 0);
+
+  // samples of the continuous panels, drawn once
+  const r = seeded(7);
+  const MODES = [[-0.45, 0.42], [0.5, -0.32]];
+  const gaussPts = Array.from({ length: 46 }, () => {
+    const u = normal(r) * 0.27, v = normal(r) * 0.14, c = Math.cos(0.55), s = Math.sin(0.55);
+    return [inBox(0.18 + c * u - s * v), inBox(-0.05 + s * u + c * v)];
+  });
+  const diffPaths = Array.from({ length: 4 }, (_, i) => {
+    const mode = MODES[i % 2], end = [mode[0] + normal(r) * 0.08, mode[1] + normal(r) * 0.06];
+    const start = [inBox(normal(r) * 0.5), inBox(normal(r) * 0.5)], K = 12, pts = [];
+    for (let k = 0; k <= K; k++) {
+      const q = Math.pow(1 - k / K, 1.4), j = 0.07 * (1 - k / K), inner = k > 0 && k < K;
+      pts.push([inBox(end[0] + (start[0] - end[0]) * q + (inner ? normal(r) * j : 0)),
+                inBox(end[1] + (start[1] - end[1]) * q + (inner ? normal(r) * j : 0))]);
+    }
+    return pts;
+  });
+  const flowPaths = Array.from({ length: 7 }, (_, i) => {
+    const mode = MODES[i % 2], end = [mode[0] + normal(r) * 0.08, mode[1] + normal(r) * 0.06];
+    const start = [inBox(normal(r) * 0.5), inBox(normal(r) * 0.5)];
+    const mid = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2], dx = end[0] - start[0], dy = end[1] - start[1];
+    const bend = 0.5 * (r() - 0.5);
+    return { start, end, ctrl: [inBox(mid[0] - dy * bend), inBox(mid[1] + dx * bend)] };
+  });
+  const jitter = Array.from({ length: 12 }, () => [r(), r()]);
+
+  const header = (ctx, G, title, sub, alpha = 1) => {
+    text(ctx, title, G.title.x, G.title.y, { font: FONT.display, weight: 600, size: 30, alpha });
+    if (sub) wrapText(ctx, sub, G.sub.x, G.sub.y, G.sub.w, 22 * FS, { size: 16, color: theme["ink-2"], alpha });
+  };
+  const foot = (ctx, G, str, alpha) => wrapText(ctx, str, G.foot.x, G.foot.y, G.foot.w, 21 * FS, { size: 15, color: theme["ink-2"], alpha });
+  const italic = (ctx, s, x, y, o = {}) => text(ctx, s, x, y, { font: FONT.display, weight: "italic 400", size: 19, ...o });
+
+  function box(ctx, b, alpha) {
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.fillStyle = theme.wash; ctx.strokeStyle = theme.rule; ctx.lineWidth = 1.2;
+    ctx.fillRect(b.x, b.y, b.s, b.s); ctx.strokeRect(b.x, b.y, b.s, b.s);
+    ctx.restore();
+    const o = { font: FONT.mono, size: 12, color: theme["ink-2"], alpha };
+    text(ctx, "−1", b.x, b.y + b.s + 17, { ...o, align: "center" });
+    text(ctx, "1", b.x + b.s, b.y + b.s + 17, { ...o, align: "center" });
+    text(ctx, "1", b.x - 7, b.y + 5, { ...o, align: "right" });
+    italic(ctx, "a¹", b.x + b.s / 2, b.y + b.s + 22, { align: "center", alpha, size: 18 });
+    italic(ctx, "a²", b.x - 10, b.y + b.s / 2 + 6, { align: "right", alpha, size: 18 });
+  }
+  function blob(ctx, b, mx, my, sx, sy, rot, alpha) {
+    if (alpha <= 0) return;
+    const { X, Y } = boxMap(b), acc = hexRGB(theme.accent), rad = (2.6 * sx * b.s) / 2;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(b.x, b.y, b.s, b.s); ctx.clip();
+    ctx.translate(X(mx), Y(my)); ctx.rotate(-rot); ctx.scale(1, sy / sx);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rad);
+    [[0, 0.5], [0.35, 0.34], [0.65, 0.12], [1, 0]].forEach(([s, a]) => g.addColorStop(s, rgba(acc, a * alpha)));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  function dot(ctx, x, y, rad, color, alpha = 1, ring = false) {
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+    if (ring) { ctx.strokeStyle = theme.surface; ctx.lineWidth = 1.5; ctx.stroke(); }
+    ctx.restore();
+  }
+  function polyline(ctx, pts, alpha) {
+    ctx.save();
+    ctx.strokeStyle = theme["ink-2"]; ctx.lineWidth = 1.3; ctx.globalAlpha = 0.7 * alpha;
+    ctx.beginPath();
+    pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCont(ctx, G, t) {
+    header(ctx, G, "Most policies act in a continuous box",
+      "An action is a vector a ∈ [−1, 1]ᵐ, and the policy is a density over that box; shown here for m = 2.", clamp01(t / 0.5));
+    const starts = [0.3, 3.7, 7.1];
+    const names = [["Gaussian", "PPO · SPO · REPPO"], ["Diffusion", "DPPO · TRUDI · AMDP"], ["Flow", "FPO · FFM"]];
+    G.cont.forEach((b, i) => {
+      const t0 = starts[i], a = ease(clamp01((t - t0) / 0.5));
+      box(ctx, b, a);
+      const lp = G.contLabel(b);
+      text(ctx, names[i][0], lp.x, lp.y, { size: 18, weight: 600, align: lp.align, alpha: a });
+      text(ctx, names[i][1], lp.x, lp.y + 24 * FS, { size: 15, color: theme["ink-2"], align: lp.align, alpha: a });
+      const { X, Y } = boxMap(b), dens = ease(clamp01((t - t0 - 0.3) / 0.6));
+      const p = clamp01((t - t0 - 0.8) / 2.6);
+      const note = (s, al) => text(ctx, s, b.x + b.s - 8, b.y + 22, { font: FONT.mono, size: 13, color: theme["ink-2"], align: "right", alpha: al });
+      if (i === 0) {
+        blob(ctx, b, 0.18, -0.05, 0.27, 0.14, 0.55, dens);
+        const n = Math.floor(p * gaussPts.length);
+        gaussPts.slice(0, n).forEach(([u, v], j) => dot(ctx, X(u), Y(v), 3.2, theme.ink, j === n - 1 ? 1 : 0.6));
+        note("samples", clamp01(p * 3));
+      } else {
+        MODES.forEach(([mx, my]) => blob(ctx, b, mx, my, 0.17, 0.11, 0.4, dens));
+        if (i === 1) {
+          diffPaths.forEach((pts, j) => {
+            const pj = clamp01(p * 1.6 - j * 0.15), n = Math.floor(pj * (pts.length - 1));
+            if (pj <= 0) return;
+            const shown = pts.slice(0, n + 1).map(([u, v]) => [X(u), Y(v)]);
+            polyline(ctx, shown, 1);
+            shown.forEach(([x, y], k) => {
+              const last = k === pts.length - 1;
+              dot(ctx, x, y, last ? 4.2 : 2, last ? theme.ink : theme["ink-2"], last ? 1 : 0.65);
+            });
+          });
+          note(`${diffPaths[0].length - 1} denoising steps`, clamp01(p * 3));
+        } else {
+          flowPaths.forEach(({ start, end, ctrl }, j) => {
+            const pj = ease(clamp01(p * 1.5 - j * 0.07));
+            if (pj <= 0) return;
+            const B = s => [(1 - s) * (1 - s) * start[0] + 2 * (1 - s) * s * ctrl[0] + s * s * end[0],
+                            (1 - s) * (1 - s) * start[1] + 2 * (1 - s) * s * ctrl[1] + s * s * end[1]];
+            polyline(ctx, Array.from({ length: 31 }, (_, k) => { const [u, v] = B((k / 30) * pj); return [X(u), Y(v)]; }), 1);
+            dot(ctx, X(start[0]), Y(start[1]), 2.4, theme["ink-2"], 0.65);
+            const [u, v] = B(pj);
+            dot(ctx, X(u), Y(v), pj >= 1 ? 4.2 : 3.2, theme.ink);
+          });
+          note("noise → action", clamp01(p * 3));
+        }
+      }
+    });
+    foot(ctx, G, "Diffusion and flow policies are expressive, but their likelihood and entropy are challenging to compute.", ease(clamp01((t - 10.8) / 0.6)));
+  }
+
+  function drawBins(ctx, G, t) {
+    header(ctx, G, "DIG-IN uses a binned policy instead",
+      "Every action dimension is cut into L = 64 bins. An action is one bin per dimension, executed at a uniform point inside the bin.", clamp01(t / 0.5));
+    const b = G.bins;
+    box(ctx, b, 1);
+    MODES.forEach(([mx, my]) => blob(ctx, b, mx, my, 0.17, 0.11, 0.4, 1 - ease(clamp01((t - 0.3) / 0.8))));
+    // the bins appear by halving: 2, 4, ..., 64 per dimension
+    ctx.save();
+    ctx.strokeStyle = theme["ink-2"];
+    for (let lev = 1; lev <= 6; lev++) {
+      const a = ease(clamp01((t - 0.6 - 0.42 * (lev - 1)) / 0.4));
+      if (a <= 0) continue;
+      const n = 1 << lev;
+      ctx.globalAlpha = a * (lev <= 3 ? 0.55 : lev === 4 ? 0.35 : 0.22);
+      ctx.lineWidth = lev <= 3 ? 1 : 0.7;
+      ctx.beginPath();
+      for (let i = 1; i < n; i += 2) {
+        const x = b.x + (i / n) * b.s, y = b.y + (i / n) * b.s;
+        ctx.moveTo(x, b.y); ctx.lineTo(x, b.y + b.s); ctx.moveTo(b.x, y); ctx.lineTo(b.x + b.s, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+    text(ctx, "64 × 64 bins", b.x + b.s - 8, b.y + 22, { font: FONT.mono, size: 13, color: theme.ink, align: "right", alpha: ease(clamp01((t - 3.3) / 0.5)), halo: true });
+    // one bin, magnified, with points executed inside it
+    const bx = 41, by = 40, cell = b.s / L;
+    const ha = ease(clamp01((t - 4) / 0.5));
+    if (ha > 0) {
+      const x0 = b.x + bx * cell, y0 = b.y + (L - 1 - by) * cell;
+      ctx.save();
+      ctx.globalAlpha = ha;
+      ctx.fillStyle = rgba(binRGB(bx, L));
+      ctx.fillRect(x0, y0, cell, cell);
+      ctx.strokeStyle = theme.ink; ctx.lineWidth = 2;
+      const pad = lerp(40, 3, ha);
+      ctx.strokeRect(x0 - pad, y0 - pad, cell + 2 * pad, cell + 2 * pad);
+      ctx.restore();
+      const zb = { x: b.x + b.s - 150, y: b.y + b.s - 150, s: 128 };
+      const za = ease(clamp01((t - 4.6) / 0.5));
+      if (za > 0) {
+        ctx.save();
+        ctx.globalAlpha = za;
+        ctx.strokeStyle = theme["ink-2"]; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(x0, y0 + cell); ctx.lineTo(zb.x, zb.y); ctx.moveTo(x0 + cell, y0 + cell); ctx.lineTo(zb.x + zb.s, zb.y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = theme.surface; ctx.fillRect(zb.x, zb.y, zb.s, zb.s);
+        ctx.fillStyle = rgba(binRGB(bx, L), 0.9); ctx.fillRect(zb.x, zb.y, zb.s, zb.s);
+        ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.5; ctx.strokeRect(zb.x, zb.y, zb.s, zb.s);
+        ctx.restore();
+        const nj = Math.min(jitter.length, Math.floor(clamp01((t - 5.2) / 3) * jitter.length) + 1);
+        jitter.slice(0, nj).forEach(([u, v], j) => dot(ctx, zb.x + 10 + u * (zb.s - 20), zb.y + 10 + v * (zb.s - 20), j === nj - 1 ? 5 : 3, theme.ink, za * (j === nj - 1 ? 1 : 0.4), j === nj - 1));
+        text(ctx, "inside one bin", zb.x + zb.s / 2, zb.y + zb.s + 20, { size: 14, align: "center", color: theme.ink, alpha: za, halo: true });
+      }
+    }
+    // right: the action as a configuration of m sites
+    const R = G.right, ra = ease(clamp01((t - 6.6) / 0.6));
+    if (ra <= 0) return;
+    text(ctx, "An action is then a configuration", R.x, R.y, { size: 19, weight: 600, alpha: ra });
+    const ts = Math.min(64, (R.w - (m - 1) * 10) / m), ty = R.y + 30;
+    data.z.forEach((zd, d) => {
+      const a = ease(clamp01((t - 7 - d * 0.12) / 0.4)), x = R.x + d * (ts + 10);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = rgba(binRGB(zd, L));
+      ctx.beginPath(); ctx.roundRect(x, ty, ts, ts, 6); ctx.fill();
+      ctx.restore();
+      text(ctx, String(zd + 1), x + ts / 2, ty + ts / 2 + 6, { font: FONT.mono, size: 16, align: "center", alpha: a, color: "#183247" });
+      italic(ctx, "x" + sup(d + 1), x + ts / 2, ty + ts + 24, { align: "center", size: 18, alpha: a });
+    });
+    const y2 = ty + ts + 66;
+    const y3 = wrapText(ctx, `m sites, each holding one of 64 bins: the same kind of object as a lattice configuration. Here m = ${m}, the action dimension of ${data.task}.`, R.x, y2, R.w, 25 * FS, { size: 17, alpha: ease(clamp01((t - 8.4) / 0.6)) });
+    wrapText(ctx, "The policy is DIG-IN's masked denoiser, conditioned on the state.", R.x, y3 + 36 * FS, R.w, 25 * FS, { size: 17, weight: 600, alpha: ease(clamp01((t - 9.8) / 0.6)) });
+  }
+
+  // rows of the generative process: one per action dimension, 64 bins wide
+  function rowBox(G, d) {
+    const R = G.rows, gap = Math.min(78, R.h / m);
+    return { x: R.x, y: R.y + d * gap, w: R.w, h: Math.min(52, gap - 22), bw: R.w / L };
+  }
+  function drawRow(ctx, G, d, st, o = {}) {
+    const rb = rowBox(G, d), a = o.alpha ?? 1;
+    if (a <= 0) return;
+    italic(ctx, "a" + sup(d + 1), rb.x - 16, rb.y + rb.h - 4, { align: "right", alpha: a, color: o.active ? theme.ink : theme["ink-2"] });
+    ctx.save();
+    ctx.globalAlpha *= a;
+    ctx.strokeStyle = theme.rule; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(rb.x, rb.y + rb.h + 0.5); ctx.lineTo(rb.x + rb.w, rb.y + rb.h + 0.5); ctx.stroke();
+    if (st.masked) {
+      ctx.globalAlpha = a * (st.maskAlpha ?? 1);
+      ctx.fillStyle = theme.mask;
+      ctx.beginPath(); ctx.roundRect(rb.x, rb.y + rb.h - 12, rb.w, 12, 3); ctx.fill();
+    }
+    if (st.probs) {
+      const mx = Math.max(...st.probs), g = st.grow ?? 1;
+      for (let l = 0; l < L; l++) {
+        const hgt = (st.probs[l] / mx) * rb.h * g, keep = l === st.pick ? 1 : 1 - (st.fade ?? 0);
+        if (hgt < 0.4 || keep <= 0) continue;
+        ctx.globalAlpha = a * keep;
+        ctx.fillStyle = rgba(binRGB(l, L));
+        ctx.fillRect(rb.x + l * rb.bw + 0.6, rb.y + rb.h - hgt, rb.bw - 1.2, hgt);
+      }
+    }
+    if (st.pickAlpha > 0) {
+      const x = rb.x + st.pick * rb.bw + rb.bw / 2;
+      ctx.globalAlpha = a * st.pickAlpha;
+      ctx.fillStyle = theme.ink;
+      ctx.beginPath(); ctx.moveTo(x, rb.y - 4); ctx.lineTo(x - 6, rb.y - 13); ctx.lineTo(x + 6, rb.y - 13); ctx.closePath(); ctx.fill();
+    }
+    if (st.done) {
+      ctx.globalAlpha = a;
+      const x = rb.x + st.pick * rb.bw;
+      ctx.fillStyle = rgba(binRGB(st.pick, L));
+      ctx.beginPath(); ctx.roundRect(x - 3, rb.y + rb.h - 26, rb.bw + 6, 26, 3); ctx.fill();
+      ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.4; ctx.stroke();
+    }
+    ctx.restore();
+    if (st.done && st.label) {
+      const x = rb.x + st.pick * rb.bw + rb.bw / 2, right = x > rb.x + rb.w - 160;
+      text(ctx, st.label, right ? x - 14 : x + 14, rb.y + rb.h - 7, { font: FONT.mono, size: 14, align: right ? "right" : "left", alpha: a * (st.labelAlpha ?? 1), halo: true });
+    }
+  }
+  function stateImage(ctx, b, alpha, caption) {
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.s, b.s, 8); ctx.clip();
+    ctx.drawImage(img, b.x, b.y, b.s, b.s);
+    ctx.restore();
+    ctx.strokeStyle = theme.rule; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.s, b.s, 8); ctx.stroke();
+    ctx.restore();
+    if (caption) {
+      italic(ctx, "s", b.x, b.y + b.s + 26, { alpha, size: 20 });
+      text(ctx, caption, b.x + 18, b.y + b.s + 26, { size: 15, color: theme["ink-2"], alpha });
+    }
+  }
+  function network(ctx, G, alpha, active) {
+    const n = G.net, cx = n.x + n.w / 2, cy = n.y + n.h / 2 + 8;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.fillStyle = active ? theme.wash : theme.surface;
+    ctx.strokeStyle = active ? theme.accent : theme["ink-2"]; ctx.lineWidth = active ? 2 : 1.4;
+    ctx.beginPath(); ctx.roundRect(n.x, n.y, n.w, n.h, 12); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    subscripted(ctx, "μ", "θ", cx - 58, cy, { size: 28, alpha });
+    const w = text(ctx, "(· | s, x", cx - 22, cy, { font: FONT.display, size: 19, alpha });
+    subscripted(ctx, "", "R", cx - 22 + w, cy, { size: 19, alpha });
+    text(ctx, ")", cx - 22 + w + 10, cy, { font: FONT.display, size: 19, alpha });
+    text(ctx, "masked network", cx, n.y + n.h + 22, { size: 14, color: theme["ink-2"], align: "center", alpha });
+  }
+
+  function drawGen(ctx, G, seg, p) {
+    header(ctx, G, "Drawing an action: one dimension per network call",
+      "The network sees the state and the dimensions revealed so far, and predicts a categorical over the 64 bins of each hidden one.",
+      seg.kind === "gen0" ? clamp01(p * 3) : 1);
+    const into = seg.kind === "gen0" ? ease(clamp01(p * 1.5)) : 1;
+    stateImage(ctx, G.img, into, `${data.task}, step ${data.t}`);
+    const kNow = seg.kind === "step" ? seg.k : seg.kind === "gen1" ? m : -1;
+    network(ctx, G, into, seg.kind === "step");
+    if (G.img.y + G.img.s < G.net.y + G.net.h || G.net.x > G.img.x + G.img.s) {
+      arrow(ctx, G.img.x + G.img.s + 8, G.net.y + G.net.h / 2, G.net.x - 6, G.net.y + G.net.h / 2, 0, clamp01((into - 0.5) * 2), { width: 2, head: 10, color: theme["ink-2"] });
+    }
+    for (let d = 0; d < m; d++) {
+      const s = stepOf[d], st = {};
+      if (s < kNow || (seg.kind === "step" && s === kNow && p >= 0.92)) {
+        Object.assign(st, { done: true, pick: data.z[d], label: `a${sup(d + 1)} = ${fmtA(data.action[d])}`,
+                            labelAlpha: s === kNow ? clamp01((p - 0.92) / 0.08) : 1 });
+      } else if (seg.kind === "step" && s === kNow) {
+        const grow = ease(clamp01((p - 0.1) / 0.35));
+        Object.assign(st, { probs: data.probs[s], grow, pick: data.z[d], pickAlpha: clamp01((p - 0.5) / 0.1),
+                            fade: ease(clamp01((p - 0.66) / 0.24)), masked: true, maskAlpha: 1 - grow });
+      } else st.masked = true;
+      drawRow(ctx, G, d, st, { alpha: seg.kind === "gen0" ? ease(clamp01(p * 2 - d * 0.12)) : 1, active: seg.kind === "step" && s === kNow });
+    }
+    const last = rowBox(G, m - 1), ao = { font: FONT.mono, size: 12, color: theme["ink-2"], alpha: into };
+    text(ctx, "−1", last.x, last.y + last.h + 18, { ...ao, align: "center" });
+    text(ctx, "0", last.x + last.w / 2, last.y + last.h + 18, { ...ao, align: "center" });
+    text(ctx, "+1", last.x + last.w, last.y + last.h + 18, { ...ao, align: "center" });
+    if (seg.kind === "step") {
+      const rb = rowBox(G, data.order[seg.k]);
+      arrow(ctx, G.net.x + G.net.w + 6, G.net.y + G.net.h / 2, rb.x - 50, rb.y + rb.h / 2, -30, ease(clamp01(p / 0.15)),
+        { width: 2, head: 10, color: theme.accent, alpha: 1 - clamp01((p - 0.85) / 0.15) });
+    }
+    // the count and the log-likelihood along the order
+    const k = seg.kind === "gen0" ? 0 : seg.kind === "step" ? seg.k + (p >= 0.92 ? 1 : 0) : m;
+    const sx = G.net.x + 6, sy = G.net.y + G.net.h + 64;
+    text(ctx, `network calls  ${k} / ${m}`, sx, sy, { font: FONT.mono, size: 14, alpha: into });
+    if (k > 0) text(ctx, `log μ(x | s, order) = ${logp[k - 1].toFixed(2)}`, sx, sy + 24 * FS, { font: FONT.mono, size: 14, color: theme["ink-2"], alpha: into });
+    if (seg.kind === "gen1") {
+      foot(ctx, G, "The order is random and is stored with the transition, so the likelihood of the action, the entropy of the policy and the KL between two policies along it are exact sums over m categoricals.", ease(clamp01((p - 0.08) / 0.12)));
+    }
+  }
+
+  // the Gibbs-label chapter: six steps, each with a caption, building up one picture
+  const LAB = [0, 4.5, 9, 15.5, 22.5, 29, 34.5];
+  const dl = data.dlab, A = "a" + sup(dl + 1);
+  const tv = 0.5 * data.label[dl].reduce((s, v, l) => s + Math.abs(v - data.cond[dl][l]), 0);
+  const CAP = [
+    ["Step 1 · A stored transition",
+     "Training uses the transitions the policy collected: a state s and the action a it took there, one bin per dimension."],
+    ["Step 2 · One dimension",
+     `Pick one dimension, here ${A}, and hold the other ${m - 1} at their stored values. The target policy π(a | s) ∝ exp(Q(s, a)/τ) then fixes how likely each value of ${A} is, given the rest.`],
+    ["Step 3 · Ask the critic",
+     `Set ${A} to each of the 64 bin centres in turn, and evaluate the critic Q at each of the 64 actions this gives.`],
+    ["Step 4 · The Gibbs label",
+     `Exponentiate Q/τ and normalize over the bins. This is the target's conditional for ${A}, its Gibbs label: built as on the lattices, with −Q/τ as the energy.`],
+    ["Step 5 · Fit the policy",
+     `The policy's categorical for ${A}, predicted with ${A} hidden, is fitted to the label by cross-entropy.` +
+     (tv < 0.2 ? " For this trained policy the two nearly agree." : "")],
+    ["Step 6 · Every transition",
+     "Each transition gets the label of one random dimension per epoch. Every state is visited once, so the self-normalized importance weights are all one and are dropped. A trust region bounds each update, and τ holds the entropy at a target."],
+  ];
+
+  // a formula with ^{...} superscripts and _{...} subscripts, in the display italic
+  function math(ctx, s, x, y, o = {}) {
+    const runs = [];
+    let buf = "";
+    for (let i = 0; i < s.length;) {
+      if ((s[i] === "^" || s[i] === "_") && s[i + 1] === "{") {
+        if (buf) runs.push([buf, 0]);
+        buf = "";
+        const j = s.indexOf("}", i);
+        runs.push([s.slice(i + 2, j), s[i] === "^" ? 1 : -1]);
+        i = j + 1;
+      } else buf += s[i++];
+    }
+    if (buf) runs.push([buf, 0]);
+    const size = (o.size ?? 20) * ((o.size ?? 20) <= 18 ? FS : 1);
+    const font = l => `italic 400 ${l ? size * 0.68 : size}px ${FONT.display}`;
+    ctx.save();
+    const widths = runs.map(([t, l]) => { ctx.font = font(l); return ctx.measureText(t).width; });
+    const W = widths.reduce((a, b) => a + b, 0);
+    if (o.measure) { ctx.restore(); return W; }
+    let cx = o.align === "center" ? x - W / 2 : o.align === "right" ? x - W : x;
+    ctx.globalAlpha *= o.alpha ?? 1;
+    ctx.fillStyle = o.color ?? theme.ink;
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    runs.forEach(([t, l], i) => {
+      ctx.font = font(l);
+      ctx.fillText(t, cx, y + (l === 1 ? -size * 0.4 : l === -1 ? size * 0.24 : 0));
+      cx += widths[i];
+    });
+    ctx.restore();
+    return W;
+  }
+
+  function drawLabel(ctx, G, T) {
+    const d = dl, dd = d + 1, at = (s, dur = 0.5) => ease(clamp01((T - s) / dur));
+    let si = 0;
+    for (let i = 0; i < 6; i++) if (T >= LAB[i]) si = i;
+    text(ctx, "Training signal: Gibbs labels from the critic", G.title.x, G.title.y, { font: FONT.display, weight: 600, size: 30, alpha: at(0) });
+    const ca = ease(clamp01((T - LAB[si]) / 0.4));
+    text(ctx, CAP[si][0], G.sub.x, G.sub.y + 4, { size: 18, weight: 600, color: theme.accent, alpha: ca });
+    wrapText(ctx, CAP[si][1], G.sub.x, G.sub.y + 30 * FS, G.sub.w, 23 * FS, { size: 16, alpha: ca });
+
+    // 1: the state and the stored action
+    const ia = at(0.3);
+    stateImage(ctx, G.limg, ia, null);
+    italic(ctx, "s", G.limg.x + G.limg.s / 2, G.limg.y + G.limg.s + 26, { size: 20, align: "center", alpha: ia });
+    const K = G.ltok, ts = Math.min(K.ts, (K.w - (m - 1) * K.gap) / m), tx = j => K.x + j * (ts + K.gap);
+    text(ctx, "stored action a", K.x, K.y - 14, { size: 15, color: theme["ink-2"], alpha: ia });
+    const pick = at(LAB[1] + 0.2);
+    const sweep = clamp01((T - LAB[2] - 0.6) / 4), sweeping = sweep > 0 && sweep < 1;
+    const lnow = Math.min(L - 1, Math.floor(sweep * L));
+    const hidden = at(LAB[4] + 0.3);
+    for (let j = 0; j < m; j++) {
+      const isD = j === d, zj = isD && sweeping ? lnow : data.z[j];
+      const a = ia * (isD ? 1 : lerp(1, 0.5, pick));
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = rgba(binRGB(zj, L));
+      ctx.beginPath(); ctx.roundRect(tx(j), K.y, ts, ts, 5); ctx.fill();
+      if (isD && hidden > 0) { ctx.globalAlpha = a * hidden; ctx.fillStyle = theme.mask; ctx.fill(); }
+      if (isD && pick > 0) { ctx.globalAlpha = ia * pick; ctx.strokeStyle = theme.ink; ctx.lineWidth = 2.4; ctx.stroke(); }
+      ctx.restore();
+      if (isD && hidden > 0) text(ctx, "?", tx(j) + ts / 2, K.y + ts / 2 + 8, { font: FONT.display, size: 24, weight: 600, align: "center", alpha: ia * hidden });
+      italic(ctx, "a" + sup(j + 1), tx(j) + ts / 2, K.y + ts + 21, { align: "center", size: 17, alpha: a, color: isD ? theme.ink : theme["ink-2"] });
+      const v = isD && sweeping ? -1 + ((lnow + 0.5) * 2) / L : data.action[j];
+      text(ctx, fmtA(v), tx(j) + ts / 2, K.y + ts + 40, { font: FONT.mono, size: 12, align: "center", color: theme["ink-2"], alpha: a * (isD ? 1 - hidden : 1) });
+    }
+    // 2: the other dimensions are held fixed
+    if (pick > 0) {
+      const y = K.y + ts + 58;
+      const segs = [[0, d - 1], [d + 1, m - 1]].filter(([a, b]) => b >= a);
+      ctx.save();
+      ctx.globalAlpha = pick; ctx.strokeStyle = theme["ink-2"]; ctx.lineWidth = 1.2;
+      for (const [a, b] of segs) {
+        const x0 = tx(a) + 2, x1 = tx(b) + ts - 2;
+        ctx.beginPath(); ctx.moveTo(x0, y - 6); ctx.lineTo(x0, y); ctx.lineTo(x1, y); ctx.lineTo(x1, y - 6); ctx.stroke();
+      }
+      ctx.restore();
+      const big = segs.reduce((p, s) => (s[1] - s[0] > p[1] - p[0] ? s : p), segs[0]);
+      if (big) text(ctx, "held fixed", (tx(big[0]) + tx(big[1]) + ts) / 2, y + 19, { size: 14, color: theme["ink-2"], align: "center", alpha: pick });
+      const what = T < LAB[2] ? "picked" : T < LAB[4] ? "swept" : "hidden";
+      text(ctx, what, tx(d) + ts / 2, y + 19, { size: 14, weight: 600, align: "center", alpha: pick });
+    }
+
+    // 3: the critic at the 64 bin centres
+    const Q = G.q, B = G.lab, qa = at(LAB[2] + 0.1);
+    const qs = data.q[d], qmin = Math.min(...qs), qmax = Math.max(...qs), pad = (qmax - qmin) * 0.12 + 1e-9;
+    const qy = v => Q.y + Q.h - ((v - qmin + pad) / (qmax - qmin + 2 * pad)) * Q.h, qx = l => Q.x + (l + 0.5) * (Q.w / L);
+    const ticks = (y, a) => {
+      const o = { font: FONT.mono, size: 12, color: theme["ink-2"], align: "center", alpha: a };
+      text(ctx, "−1", Q.x, y, o); text(ctx, "0", Q.x + Q.w / 2, y, o); text(ctx, "+1", Q.x + Q.w, y, o);
+    };
+    if (qa > 0) {
+      ctx.save();
+      ctx.globalAlpha = qa; ctx.strokeStyle = theme.rule; ctx.lineWidth = 1;
+      ctx.strokeRect(Q.x, Q.y, Q.w, Q.h);
+      ctx.restore();
+      const w = math(ctx, "Q(s, a)", Q.x, Q.y - 12, { size: 19, alpha: qa });
+      text(ctx, ` with ${A} set to each bin centre`, Q.x + w, Q.y - 12, { size: 15, alpha: qa });
+      const nq = Math.floor(sweep * L);
+      text(ctx, `critic calls ${nq} / ${L}`, Q.x + Q.w, Q.y - 12, { font: FONT.mono, size: 13, color: theme["ink-2"], align: "right", alpha: qa });
+      ticks(Q.y + Q.h + 17, qa);
+      if (nq > 0) {
+        ctx.save();
+        ctx.strokeStyle = theme.ink; ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        for (let l = 0; l < nq; l++) (l ? ctx.lineTo(qx(l), qy(qs[l])) : ctx.moveTo(qx(l), qy(qs[l])));
+        ctx.stroke();
+        ctx.restore();
+        if (sweeping) {
+          ctx.save();
+          ctx.strokeStyle = theme.accent; ctx.globalAlpha = 0.5; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(qx(nq - 1), Q.y); ctx.lineTo(qx(nq - 1), Q.y + Q.h); ctx.stroke();
+          ctx.restore();
+          dot(ctx, qx(nq - 1), qy(qs[nq - 1]), 4.5, theme.accent);
+        }
+      }
+      // where the stored action sits
+      const sa = at(LAB[2] + 4.8);
+      if (sa > 0) {
+        const xs = qx(data.z[d]), y1 = T >= LAB[3] ? B.y + B.h : Q.y + Q.h;
+        ctx.save();
+        ctx.globalAlpha = sa * 0.8; ctx.strokeStyle = theme["ink-2"]; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(xs, Q.y); ctx.lineTo(xs, y1); ctx.stroke();
+        ctx.restore();
+        const right = xs > Q.x + Q.w - 90;
+        text(ctx, "stored", right ? xs - 6 : xs + 6, Q.y + 16, { size: 13, color: theme["ink-2"], align: right ? "right" : "left", alpha: sa, halo: true });
+      }
+    }
+
+    // 4: exponentiate and normalize: the label, and its formula
+    const ar = at(LAB[3] + 0.2, 0.6), ba = at(LAB[3] + 0.9, 1.2), fa = at(LAB[3] + 1.8, 0.6);
+    const lab = data.label[d], cond = data.cond[d], top = Math.max(...lab, ...cond) * 1.08;
+    if (ar > 0) {
+      const ax = Q.x + 40;
+      arrow(ctx, ax, Q.y + Q.h + 28, ax, B.y - 40, 0, ar, { width: 2, head: 10, color: theme["ink-2"] });
+      text(ctx, `exp(Q / τ) with τ = ${data.temp.toPrecision(2)}, normalized over the ${L} bins`, ax + 16, (Q.y + Q.h + B.y) / 2 - 2, { size: 15, alpha: ar, halo: true });
+    }
+    if (ba > 0) {
+      ctx.save();
+      ctx.strokeStyle = theme.rule; ctx.lineWidth = 1; ctx.globalAlpha = ba;
+      ctx.beginPath(); ctx.moveTo(B.x, B.y + B.h + 0.5); ctx.lineTo(B.x + B.w, B.y + B.h + 0.5); ctx.stroke();
+      ctx.restore();
+      const bw = B.w / L;
+      for (let l = 0; l < L; l++) {
+        const h = ((B.h * lab[l]) / top) * ba;
+        if (h < 0.3) continue;
+        ctx.fillStyle = rgba(binRGB(l, L));
+        ctx.fillRect(B.x + l * bw + 0.6, B.y + B.h - h, bw - 1.2, h);
+      }
+      ticks(B.y + B.h + 17, ba);
+      math(ctx, `${A} = c`, B.x + B.w / 2, B.y + B.h + 40, { size: 17, align: "center", alpha: ba });
+      ctx.save(); ctx.globalAlpha = ba; ctx.fillStyle = rgba(binRGB(50, L)); ctx.fillRect(B.x, B.y - 27, 18, 11); ctx.restore();
+      const w = text(ctx, "Gibbs label ", B.x + 26, B.y - 16, { size: 15, alpha: ba });
+      math(ctx, `h^{${dd}}(c | s, a^{−${dd}})`, B.x + 26 + w, B.y - 16, { size: 17, alpha: ba });
+    }
+    if (fa > 0) {
+      // h^d(c | s, a^-d) = exp(Q(s, a^-d, a^d = c)/tau) / sum_c' exp(Q(s, a^-d, a^d = c')/tau)
+      const F = G.form, sz = F.size;
+      const lhs = math(ctx, `h^{${dd}}(c | s, a^{−${dd}})  =`, F.x, F.y, { size: sz, alpha: fa });
+      const num = `exp(Q(s, a^{−${dd}}, a^{${dd}} = c) / τ)`, den = `exp(Q(s, a^{−${dd}}, a^{${dd}} = c′) / τ)`;
+      const wn = math(ctx, num, 0, 0, { size: sz, measure: true });
+      const ws = math(ctx, "Σ_{c′} ", 0, 0, { size: sz, measure: true }), wd = ws + math(ctx, den, 0, 0, { size: sz, measure: true });
+      const fx = F.x + lhs + 12, fw = Math.max(wn, wd), cx = fx + fw / 2;
+      math(ctx, num, cx, F.y - 0.7 * sz, { size: sz, align: "center", alpha: fa });
+      ctx.save();
+      ctx.globalAlpha = fa; ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(fx, F.y - 6); ctx.lineTo(fx + fw, F.y - 6); ctx.stroke();
+      ctx.restore();
+      const dx = cx - wd / 2;
+      math(ctx, "Σ_{c′} ", dx, F.y + sz + 1, { size: sz, alpha: fa });
+      math(ctx, den, dx + ws, F.y + sz + 1, { size: sz, alpha: fa });
+      text(ctx, "the target's conditional for one dimension, from energy differences only", F.x, F.y + 2 * sz + 18, { size: 14, color: theme["ink-2"], alpha: fa });
+    }
+
+    // 5: the policy's prediction, fitted to the label
+    const pa = at(LAB[4] + 0.6, 0.7);
+    if (pa > 0) {
+      const bw = B.w / L, by = v => B.y + B.h - (v / top) * B.h;
+      ctx.save();
+      ctx.globalAlpha = pa; ctx.strokeStyle = theme.ink; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let l = 0; l < L; l++) {
+        const x0 = B.x + l * bw, y = by(cond[l]);
+        if (l === 0) ctx.moveTo(x0, y); else ctx.lineTo(x0, y);
+        ctx.lineTo(x0 + bw, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+      const lx = B.x + B.w * 0.52, ly = B.y - 16;
+      ctx.save(); ctx.globalAlpha = pa; ctx.strokeStyle = theme.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(lx, ly - 5); ctx.lineTo(lx + 22, ly - 5); ctx.stroke(); ctx.restore();
+      text(ctx, `policy's prediction for ${A}`, lx + 30, ly, { size: 15, alpha: pa });
+      text(ctx, "fitted to the label by cross-entropy", B.x + B.w, B.y + B.h + 62, { size: 14, color: theme["ink-2"], align: "right", alpha: pa });
+    }
+  }
+
+  function draw(ctx, t, film) {
+    const G = rlGeometry(film.mode);
+    const [seg, p] = tl.at(t);
+    if (seg.kind === "cont") drawCont(ctx, G, t - seg.t0);
+    else if (seg.kind === "bins") drawBins(ctx, G, t - seg.t0);
+    else if (seg.kind === "label") drawLabel(ctx, G, t - seg.t0);
+    else drawGen(ctx, G, seg, p);
+  }
+
+  return { timeline: tl, poster: tl.segs.find(s => s.kind === "step" && s.k === 1).t0 + 2.4,
+           dims: { wide: { W: 1280, H: 720 }, tall: { W: 720, H: 1180 } }, draw };
+}
+
+// the episode videos, one per task, playing while they are on screen
+const RL_TASKS = {
+  AcrobotSwingup: 1, AcrobotSwingupSparse: 1, BallInCup: 2, CartpoleBalance: 1, CartpoleBalanceSparse: 1,
+  CartpoleSwingup: 1, CartpoleSwingupSparse: 1, CheetahRun: 6, FingerSpin: 2, FingerTurnEasy: 2, FingerTurnHard: 2,
+  FishSwim: 5, HopperHop: 4, HopperStand: 4, PendulumSwingup: 1, ReacherEasy: 2, ReacherHard: 2, WalkerRun: 6,
+  WalkerStand: 6, WalkerWalk: 6,
+};
+function buildEpisodes(index) {
+  const list = document.getElementById("episodes");
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    const v = e.target;
+    if (e.isIntersecting && !REDUCED && !v.dataset.paused) v.play().catch(() => {});
+    else v.pause();
+  }), { threshold: 0.25 });
+  for (const [task, m] of Object.entries(RL_TASKS)) {
+    const e = index[task];
+    if (!e) continue;
+    const li = list.appendChild(document.createElement("li"));
+    const v = li.appendChild(document.createElement("video"));
+    v.muted = true; v.loop = true; v.playsInline = true; v.preload = "none";
+    v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
+    v.poster = `assets/rl/${task}.jpg`;
+    v.src = `assets/rl/${task}.mp4`;
+    v.setAttribute("aria-label", `${task}: one episode of the trained policy, return ${Math.round(e.return)}; mean return over ${e.episodes} episodes ${Math.round(e.mean)}`);
+    v.addEventListener("click", () => {
+      if (v.paused) { delete v.dataset.paused; v.play().catch(() => {}); } else { v.dataset.paused = "1"; v.pause(); }
+    });
+    li.appendChild(document.createElement("span")).className = "name";
+    li.lastChild.textContent = task;
+    li.appendChild(document.createElement("span")).className = "ret";
+    li.lastChild.textContent = `return ${Math.round(e.return)} · mean of ${e.episodes}: ${Math.round(e.mean)}`;
+    io.observe(v);
+  }
+}
+
 /* ------------------------------------------------------------------ page */
 (function tokens() {
   const el = document.getElementById("tokens");
@@ -1546,6 +2240,16 @@ Promise.all([
 }).catch(err => {
   document.querySelectorAll(".stage .loading").forEach(el => { el.textContent = "Could not load the trajectory data (" + err.message + ")."; });
 });
+Promise.all([
+  fetch("assets/rl.json").then(r => (r.ok ? r.json() : Promise.reject(new Error(r.status)))),
+  new Promise((ok, fail) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => fail(new Error("state image")); im.src = "assets/rl/state.jpg"; }),
+]).then(([data, im]) => {
+  new Film(document.getElementById("film-rl"), "rl", makeRLFilm(data, im));
+}).catch(err => {
+  const el = document.querySelector("#film-rl .loading");
+  if (el) el.textContent = "Could not load the policy data (" + err.message + ").";
+});
+fetch("assets/rl/episodes.json").then(r => r.json()).then(buildEpisodes).catch(() => {});
 requestAnimationFrame(loop);
 </script>
 </body>

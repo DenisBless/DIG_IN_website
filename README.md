@@ -4,8 +4,8 @@ Project page for *Fixed-point neural samplers on discrete spaces*
 ([arXiv 2610.01739](https://arxiv.org/pdf/2610.01739)), which introduces DIG-IN, the
 Discrete Gibbs Iterative Neural Sampler.
 
-The page is a single static `index.html`. The two animations are drawn on a canvas
-from the data in `assets/`:
+The page is a single static `index.html`. The animations are drawn on a canvas from
+the data in `assets/`:
 
 - `assets/alloy.json`: phase-diagram boundaries for Ag–Pd and Cu–Au, the fcc site
   positions, and one recorded sampling trajectory per highlighted phase.
@@ -22,6 +22,22 @@ from the data in `assets/`:
 
 Each trajectory is a draw from a trained checkpoint, recorded network call by network
 call: the final configuration plus the order in which its sites were revealed.
+
+The reinforcement-learning section has a film and one video per task:
+
+- `assets/rl.json` and `assets/rl/state.jpg`: one action drawn by a DIG-IN policy trained
+  on WalkerWalk, at a state of a recorded episode: the categorical over the 64 bins of
+  each dimension at the network call that reveals it, the sampled bins, the critic at the
+  bin centres of every dimension and the Gibbs labels. Written by
+  `python tools/make_rl_data.py <results>`.
+- `assets/rl/<Task>.mp4` (with a poster `<Task>.jpg`) and `assets/rl/episodes.json`: one
+  greedy episode per DeepMind Control task, rendered from the recorded MuJoCo states by
+  `python tools/render_dmc_episodes.py <results>`.
+
+Both tools read `<results>/<Task>/s<seed>/{episode,demo}.npz`, written by
+`tools/record_run.py`: a run of the paper's settings with the code repository's `rl_jax`
+that records the final policy (the best of 64 greedy episodes, and one draw at a few of
+its states). They need `mujoco`, `mujoco_playground`, `imageio` and `imageio-ffmpeg`.
 
 ## Running locally
 
