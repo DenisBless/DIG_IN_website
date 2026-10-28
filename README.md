@@ -23,6 +23,31 @@ the data in `assets/`:
 Each trajectory is a draw from a trained checkpoint, recorded network call by network
 call: the final configuration plus the order in which its sites were revealed.
 
+The two molecular sections, discretized Boltzmann generators and free-energy estimation, each
+have a film drawn from one data file:
+
+- `assets/peptides.json`: alanine dipeptide and tetrapeptide.
+  - Recorded draws network call by network call, with the reveal order, the categorical of
+    every call, the network's guess for the still-masked coordinates and the molecule after
+    each call. There is one draw each for ALDP and AL4, in internal coordinates.
+  - The Gibbs labels of the finished draw.
+  - Ramachandran surfaces of the MD reference and of the 2M-sample sets, as drawn and
+    reweighted, with sample points and their weights, generated structures and the ESS,
+    ln Z and JS of every seed.
+  - Written by `python tools/make_peptide_data.py --runs_root <runs> --samples <sample sets>
+    --ref_dir <MD references> --out assets/peptides.json`.
+- `assets/bridge.json`: the bridge on ALDP-S and ALDP-T.
+  - The marginal of X_t in (φ, ψ) at 17 times, 32 recorded paths from held-out MD frames,
+    and one path in 3D with its jumps and weight terms.
+  - The distribution of path weights, the running estimates of three seeds, the references
+    (BAR on the MD of both states for ALDP-S, umbrella sampling for ALDP-T) and FEAT's
+    estimates as reported in its paper (kept in the data, not drawn by the film).
+  - Written by `python tools/make_bridge_data.py --runs_root <runs> --out assets/bridge.json`.
+
+Both tools need the code repository's packages on the `PYTHONPATH` (`peptides/` for `digin`,
+`free_energy/` for `digin_bridge`), the trained runs, and a GPU. The MD references and sample
+sets are the outputs of `digin.md` and `digin.sample`; FEAT's data is downloaded on first use.
+
 The reinforcement-learning section has a film and one video per task:
 
 - `assets/rl.json` and `assets/rl/state.jpg`: one action drawn by a DIG-IN policy trained

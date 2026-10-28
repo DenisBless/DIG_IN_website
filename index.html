@@ -276,6 +276,8 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
       <li><span>Ising &amp; Potts</span><span>The only method in our comparison that covers every mode in the ordered phase while also giving accurate ln&nbsp;<i class="v">Z</i>.</span></li>
       <li><span>Amortized</span><span>One sampler conditioned on (<i class="v">β</i>, <i class="v">h</i>), on lattices up to <i class="v">D</i>&nbsp;=&nbsp;2500 sites.</span></li>
       <li><span>Alloys</span><span>Recovers the phase diagrams of Ag–Pd and Cu–Au from a single sampler conditioned on (<i class="v">T</i>, Δ<i class="v">μ</i>).</span></li>
+      <li><span>Peptides</span><span>A Boltzmann generator on binned coordinates of alanine dipeptide and tetrapeptide, trained from the energy alone, with no molecular-dynamics data.</span></li>
+      <li><span>Free energies</span><span>A learned bridge recovers the solvation free energy of alanine dipeptide to within 0.01 of BAR on the molecular dynamics of both states, from samples of one state and the energy of the other.</span></li>
       <li><span>RL</span><span>As a binned policy for continuous control, the highest final return among the Gaussian, diffusion and flow policies we compare against on 20 DeepMind Control tasks.</span></li>
     </ul>
   </section>
@@ -333,6 +335,46 @@ footer .wide { display: flex; flex-wrap: wrap; justify-content: space-between; g
         <div class="chapters" role="group" aria-label="Chapters"></div>
       </div>
       <p class="fine">Every trajectory is a draw from the trained checkpoint, recorded call by call. Grey cells are still masked. Outlined cells were revealed in the most recent calls. Each thumbnail is one draw at its grid point; at the points the film visits, it is the draw being replayed.</p>
+    </div>
+  </section>
+
+  <section class="wide film-section" id="peptides" aria-labelledby="peptides-h">
+    <div class="col prose intro">
+      <h2 id="peptides-h">Discretized Boltzmann generators</h2>
+      <p>Boltzmann generators sample the equilibrium distribution of a molecule with a generative model of exact likelihood, so that importance weights remove the remaining bias. We cut every coordinate of alanine dipeptide (22 atoms) and alanine tetrapeptide (42 atoms) into bins, in internal coordinates, and train DIG-IN from the potential energy alone. A uniform point inside each bin makes a draw continuous with an exact density. The film replays draws of the trained models network call by network call and compares two million draws per run with long molecular dynamics.</p>
+    </div>
+    <div class="film" id="film-bg">
+      <div class="stage">
+        <canvas role="img" aria-label="Animated sequence: alanine dipeptide as a sequence of binned bond, angle and dihedral coordinates; the trained sampler revealing them one network call at a time while the 3D structure settles; the Gibbs label of the backbone dihedral phi; the same for alanine tetrapeptide; and Ramachandran plots of two million draws against molecular dynamics."></canvas>
+        <div class="loading">Loading structures…</div>
+      </div>
+      <div class="controls">
+        <button class="play" type="button" id="bg-play" aria-label="Play"></button>
+        <input class="scrub" type="range" id="bg-scrub" min="0" max="1000" value="0" aria-label="Seek">
+        <span class="clock" id="bg-clock">0:00 / 0:00</span>
+        <div class="chapters" role="group" aria-label="Chapters"></div>
+      </div>
+      <p class="fine">Every structure is a draw of a trained checkpoint, recorded call by call; still-masked coordinates are drawn at the network's most likely bin. The Ramachandran surfaces show ln&nbsp;<i class="v">p</i>(<i class="v">φ</i>,&nbsp;<i class="v">ψ</i>) on 60&nbsp;×&nbsp;60 cells, with the three seeds pooled. Drag a molecule to rotate it.</p>
+    </div>
+  </section>
+
+  <section class="wide film-section" id="free-energy" aria-labelledby="free-energy-h">
+    <div class="col prose intro">
+      <h2 id="free-energy-h">Free energy estimation</h2>
+      <p>DIG-IN's bridge learns a pair of time-reversed CTMCs between two Boltzmann distributions, from samples of the first and the energy of the second. On FEAT's alanine dipeptide tasks it carries molecular-dynamics frames from vacuum into implicit solvent (ALDP-S), and from one conformational state across a barrier into another (ALDP-T). The weights of the paths give the free-energy difference.</p>
+    </div>
+    <div class="film" id="film-fe">
+      <div class="stage">
+        <canvas role="img" aria-label="Animated sequence: the two alanine dipeptide tasks; the bridge's marginal in the Ramachandran plane morphing from vacuum to solvent and from one conformational state to the other, with paths from molecular-dynamics frames and one path in 3D; the path weights; and the estimates converging to the references."></canvas>
+        <div class="loading">Loading paths…</div>
+      </div>
+      <div class="controls">
+        <button class="play" type="button" id="fe-play" aria-label="Play"></button>
+        <input class="scrub" type="range" id="fe-scrub" min="0" max="1000" value="0" aria-label="Seek">
+        <span class="clock" id="fe-clock">0:00 / 0:00</span>
+        <div class="chapters" role="group" aria-label="Chapters"></div>
+      </div>
+      <p class="fine">The paths start from held-out MD frames and use the trained bridge of one seed. The estimates use one path per MD frame, about 250k, for each of three seeds. Drag the molecule to rotate it.</p>
     </div>
   </section>
 
@@ -2173,6 +2215,869 @@ function buildEpisodes(index) {
   }
 }
 
+/* ------------------------------------------------------------------ molecules */
+// Shared by the Boltzmann-generator and free-energy films: ball-and-stick molecules drawn from
+// positions in picometres (int16), and Ramachandran surfaces ln p(phi, psi) on 60 x 60 cells,
+// quantized to bytes (0 = empty) and coloured with the page's own palette.
+const CPK_RGB = { C: [120, 129, 140], N: [62, 104, 204], O: [208, 66, 58], H: [234, 238, 242] };
+const ATOM_R = { C: 0.034, N: 0.032, O: 0.032, H: 0.021 };      // nm, ball-and-stick
+const b64i16 = s => new Int16Array(b64bytes(s).buffer);
+const atomSprites = {};
+const spriteOf = el => (atomSprites[el] ??= sphereSprite(CPK_RGB[el] ?? [150, 150, 150]));
+const deg = r => (r * 180) / Math.PI;
+const fmtDeg = r => `${deg(r) < -0.5 ? "−" : ""}${Math.abs(deg(r)).toFixed(0)}°`;
+const fmtSci = v => {
+  if (v >= 0.01) return v.toFixed(2);
+  const e = Math.floor(Math.log10(v));
+  return `${(v / 10 ** e).toFixed(1)}×10${e < 0 ? "⁻" : ""}${sup(Math.abs(e))}`;
+};
+const meanOf = a => a.reduce((s, v) => s + v, 0) / a.length;
+const sdOf = a => { const m = meanOf(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / Math.max(1, a.length - 1)); };
+
+function prepMol(m) {
+  const els = m.atoms.map(a => a.el);
+  return { n: els.length, els, names: m.atoms.map(a => a.name), bonds: m.bonds };
+}
+// frame k of an (F, n, 3) trajectory in pm, in nm; linear between frames for a fractional k
+function frameAt(pos, n, k) {
+  const F = pos.length / (3 * n);
+  const k0 = Math.max(0, Math.min(F - 1, Math.floor(k))), k1 = Math.min(F - 1, k0 + 1), p = clamp01(k - k0);
+  const out = new Float32Array(3 * n);
+  for (let i = 0; i < 3 * n; i++) out[i] = lerp(pos[k0 * 3 * n + i], pos[k1 * 3 * n + i], p) / 1000;
+  return out;
+}
+// centre and radius of a structure (nm), so that a view keeps its scale while the molecule moves
+function molFrame(P, n, pad = 0.09) {
+  const c = [0, 0, 0];
+  for (let i = 0; i < n; i++) for (let a = 0; a < 3; a++) c[a] += P[3 * i + a] / n;
+  let r = 0;
+  for (let i = 0; i < n; i++) r = Math.max(r, Math.hypot(P[3 * i] - c[0], P[3 * i + 1] - c[1], P[3 * i + 2] - c[2]));
+  return { c, R: r + pad };
+}
+function drawMolecule(ctx, mol, P, view, yaw, pitch, o = {}) {
+  const alpha = o.alpha ?? 1;
+  if (alpha <= 0.002) return null;
+  const { c, R } = o.frame ?? molFrame(P, mol.n);
+  const sc = view.r / R, f = R * 6;
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const n = mol.n, q = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = P[3 * i] - c[0], y = P[3 * i + 1] - c[1], z = P[3 * i + 2] - c[2];
+    const x1 = x * cy - y * sy, y1 = x * sy + y * cy;
+    const x2 = x1 * cp + z * sp, z2 = -x1 * sp + z * cp;
+    const k = f / (f + x2);
+    q[i] = [view.x + y1 * k * sc, view.y - z2 * k * sc, x2, k];
+  }
+  const items = [];
+  for (let i = 0; i < n; i++) items.push([q[i][2], 0, i]);
+  for (const [a, b] of mol.bonds) items.push([(q[a][2] + q[b][2]) / 2 + 1e-4, 1, a, b]);
+  items.sort((u, v) => v[0] - u[0]);
+  const aA = o.atomAlpha, edge = hexRGB(theme["ink-2"]);
+  ctx.save();
+  ctx.lineCap = "round";
+  for (const it of items) {
+    if (it[1] === 1) {
+      const a = it[2], b = it[3], A = q[a], B = q[b];
+      const al = alpha * Math.min(aA ? aA[a] : 1, aA ? aA[b] : 1);
+      if (al <= 0.01) continue;
+      const w = 0.011 * sc * (A[3] + B[3]) / 2, mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+      ctx.globalAlpha = al;
+      ctx.strokeStyle = rgba(edge, 0.85); ctx.lineWidth = w + 2.2;
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke();
+      for (const [E, el] of [[A, mol.els[a]], [B, mol.els[b]]]) {
+        ctx.strokeStyle = rgba(CPK_RGB[el] ?? [150, 150, 150]); ctx.lineWidth = w;
+        ctx.beginPath(); ctx.moveTo(E[0], E[1]); ctx.lineTo(mx, my); ctx.stroke();
+      }
+    } else {
+      const i = it[2], [x, y, , k] = q[i];
+      const al = alpha * (aA ? aA[i] : 1);
+      if (al <= 0.01) continue;
+      const s = (ATOM_R[mol.els[i]] ?? 0.03) * sc * k * (o.atomScale ?? 1);
+      ctx.globalAlpha = al;
+      ctx.drawImage(spriteOf(mol.els[i]), x - s, y - s, 2 * s, 2 * s);
+      if (o.ring?.has(i)) {
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = theme.accent; ctx.lineWidth = 2.6;
+        ctx.beginPath(); ctx.arc(x, y, s + 5, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+  return q;
+}
+// a soft glow behind a molecule: the implicit solvent of ALDP-S
+function solventHalo(ctx, view, a) {
+  if (a <= 0.005) return;
+  const acc = hexRGB(theme.accent), g = ctx.createRadialGradient(view.x, view.y, view.r * 0.2, view.x, view.y, view.r * 1.25);
+  g.addColorStop(0, rgba(acc, 0.20 * a)); g.addColorStop(0.65, rgba(acc, 0.12 * a)); g.addColorStop(1, rgba(acc, 0));
+  ctx.save(); ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(view.x, view.y, view.r * 1.25, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+const RAMA_N = 60;
+const ramaCache = new Map();
+function ramaRamp() {
+  const s = hexRGB(theme.surface), a = hexRGB(theme.accent), k = hexRGB(theme.ink);
+  const mix = (u, v, p) => u.map((x, i) => Math.round(lerp(x, v[i], p)));
+  const stops = [[0, mix(s, a, 0.12)], [0.45, mix(s, a, 0.55)], [0.8, a], [1, mix(a, k, 0.75)]];
+  return t => {
+    for (let i = 1; i < stops.length; i++) {
+      if (t <= stops[i][0]) { const [t0, c0] = stops[i - 1], [t1, c1] = stops[i]; return mix(c0, c1, (t - t0) / (t1 - t0)); }
+    }
+    return stops.at(-1)[1];
+  };
+}
+// a surface as a small canvas, rows bottom-up in psi, cached per theme
+function ramaImage(src) {
+  const key = theme.surface + theme.accent + src;
+  let cv = ramaCache.get(key);
+  if (cv) return cv;
+  const N = RAMA_N, v = b64bytes(src), ramp = ramaRamp(), s = hexRGB(theme.surface);
+  cv = document.createElement("canvas");
+  cv.width = cv.height = N;
+  const g = cv.getContext("2d"), img = g.createImageData(N, N);
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const val = v[r * N + c], col = val ? ramp(Math.pow((val - 1) / 254, 1.1)) : s;
+    img.data.set([col[0], col[1], col[2], 255], ((N - 1 - r) * N + c) * 4);
+  }
+  g.putImageData(img, 0, 0);
+  if (ramaCache.size > 400) ramaCache.clear();
+  ramaCache.set(key, cv);
+  return cv;
+}
+const ramaXY = (b, phi, psi) => [b.x + ((phi + Math.PI) / (2 * Math.PI)) * b.s, b.y + (1 - (psi + Math.PI) / (2 * Math.PI)) * b.s];
+function drawRama(ctx, src, b, o = {}) {
+  const alpha = o.alpha ?? 1;
+  if (alpha <= 0.002) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.fillStyle = theme.surface; ctx.fillRect(b.x, b.y, b.s, b.s);
+  if (o.blur) { ctx.beginPath(); ctx.rect(b.x, b.y, b.s, b.s); ctx.clip(); ctx.filter = `blur(${o.blur * b.s / RAMA_N}px)`; }
+  if (src) ctx.drawImage(ramaImage(src), b.x, b.y, b.s, b.s);
+  if (o.src2 && (o.mix ?? 0) > 0) { ctx.globalAlpha = alpha * o.mix; ctx.drawImage(ramaImage(o.src2), b.x, b.y, b.s, b.s); ctx.globalAlpha = alpha; }
+  ctx.filter = "none";
+  if (o.stateA) {
+    const [x0] = ramaXY(b, o.stateA[0], 0), [x1] = ramaXY(b, o.stateA[1], 0);
+    ctx.strokeStyle = theme.ink; ctx.lineWidth = 1.4; ctx.setLineDash([5, 4]);
+    ctx.strokeRect(x0, b.y + 1, x1 - x0, b.s - 2); ctx.setLineDash([]);
+  }
+  ctx.strokeStyle = theme.rule; ctx.lineWidth = 1;
+  ctx.strokeRect(b.x, b.y, b.s, b.s);
+  ctx.restore();
+  if (o.ticks !== false) {
+    const tk = { font: FONT.mono, size: 12, color: theme["ink-2"], alpha };
+    text(ctx, "−π", b.x, b.y + b.s + 16, { ...tk, align: "center" });
+    text(ctx, "π", b.x + b.s, b.y + b.s + 16, { ...tk, align: "center" });
+    text(ctx, "π", b.x - 6, b.y + 9, { ...tk, align: "right" });
+    text(ctx, "−π", b.x - 6, b.y + b.s, { ...tk, align: "right" });
+  }
+  if (o.axes !== false) {
+    const it = { font: FONT.display, weight: "italic 400", size: 18, alpha };
+    text(ctx, "φ", b.x + b.s / 2, b.y + b.s + 20, { ...it, align: "center" });
+    text(ctx, "ψ", b.x - 14, b.y + b.s / 2 + 6, { ...it, align: "right" });
+  }
+  if (o.title) text(ctx, o.title, b.x, b.y - 12, { size: o.titleSize ?? 16, weight: 600, alpha });
+}
+// basin names at their usual places on the plane
+function basinNames(ctx, b, alpha, small = false) {
+  if (alpha <= 0) return;
+  const o = { font: FONT.display, weight: "italic 400", size: small ? 14 : 16, color: theme.ink, alpha, halo: true, align: "center" };
+  [["β", -1.55, 2.55], ["αR", -1.4, -0.35], ["αL", 1.1, 0.75]].forEach(([s, ph, ps]) => {
+    const [x, y] = ramaXY(b, ph, ps);
+    text(ctx, s, x + (s === "αR" ? 26 : s === "αL" ? 20 : 0), y, o);
+  });
+}
+
+/* ------------------------------------------------------------------ Boltzmann-generator film */
+// DIG-IN as a Boltzmann generator on binned molecular coordinates (assets/peptides.json, written
+// by tools/make_peptide_data.py): draws recorded network call by network call, the Gibbs label of
+// one coordinate, and the Ramachandran surfaces of MD and of 2M samples per run.
+const KIND_NAME = { bond: "bond", angle: "angle", torsion: "torsion", omega: "peptide bond ω", branch: "branch dihedral",
+                    frame: "frame", vector: "bond vector" };
+
+function bgGeometry(mode) {
+  if (mode === "wide") return {
+    title: { x: 64, y: 70 }, sub: { x: 64, y: 102, w: 1150 },
+    view: { x: 330, y: 404, r: 214 }, tok: { x: 640, y: 188, w: 576 },
+    cat: { x: 640, y: 444, w: 576, h: 104 }, stats: { x: 640, y: 628 }, foot: { x: 64, y: 690, w: 1150 },
+    // intro
+    introTok: { x: 640, y: 230, w: 576 }, dial: { x: 860, y: 520, r: 86 },
+    // Gibbs label
+    lview: { x: 270, y: 420, r: 200 }, lq: { x: 560, y: 236, w: 650, h: 116 }, llab: { x: 560, y: 476, w: 650, h: 116 },
+    // equilibrium
+    md: { x: 112, y: 200, s: 300 }, dig: { x: 512, y: 200, s: 300 }, gal: { x: 950, ys: [236, 392, 548], r: 70 },
+    eqStats: { x: 112, y: 600 },
+    grid: { x: 300, y: 186, s: 190, gx: 222, gy: 238 }, grid4Gal: { x: 1080, ys: [270, 500], r: 92 },
+    cards: { x: 64, y: 250, w: 563, h: 262, gap: 24 },
+  };
+  return {
+    tall: true, title: { x: 40, y: 62 }, sub: { x: 40, y: 98, w: 640 },
+    view: { x: 360, y: 405, r: 178 }, tok: { x: 40, y: 640, w: 640 },
+    cat: { x: 40, y: 900, w: 640, h: 100 }, stats: { x: 40, y: 1090 }, foot: { x: 40, y: 1128, w: 640 },
+    introTok: { x: 40, y: 680, w: 640 }, dial: { x: 150, y: 960, r: 92 },
+    lview: { x: 360, y: 420, r: 160 }, lq: { x: 40, y: 680, w: 640, h: 120 }, llab: { x: 40, y: 900, w: 640, h: 120 },
+    md: { x: 80, y: 262, s: 270 }, dig: { x: 400, y: 262, s: 270 }, gal: { x: 0, xs: [150, 360, 570], y: 720, r: 76 },
+    eqStats: { x: 40, y: 940 },
+    grid: { x: 100, y: 262, s: 165, gx: 196, gy: 236 }, grid4Gal: { x: 0, xs: [220, 500], y: 900, r: 92 },
+    cards: { x: 40, y: 330, w: 640, h: 262, gap: 32 },
+  };
+}
+
+function prepTraj(sys, set) {
+  const tr = set.traj, D = set.D, L = set.L, n = sys.mol.n;
+  const step = Array(D);
+  tr.order.forEach((d, k) => { step[d] = k; });
+  const atomCoords = Array.from({ length: n }, () => []);
+  set.coords.forEach((c, d) => atomCoords[c.atom].push(d));
+  const pos = b64i16(tr.pos);
+  const fin = frameAt(pos, n, D);
+  return { ...set, ...tr, D, L, step, atomCoords, pos, probs: b64bytes(tr.probs), gibbs: b64bytes(tr.gibbs),
+           frame: molFrame(fin, n), fin };
+}
+// the value of coordinate d at bin b, for the labels
+function coordValue(T, d, b) {
+  const c = T.coords[d], v = T.box.center[d] + T.box.half[d] * ((2 * (b + 0.5)) / T.L - 1);
+  if (c.kind === "bond" || c.kind === "frame" || c.kind === "vector") return `${(v * 10).toFixed(2)} Å`;
+  let a = v;
+  if (c.kind !== "angle") a = Math.atan2(Math.sin(v), Math.cos(v));
+  return fmtDeg(a);
+}
+
+function makeBGFilm(data) {
+  const SY = {};
+  for (const k of ["aldp", "al4"]) SY[k] = { ...data.systems[k], mol: prepMol(data.systems[k].molecule) };
+  const T = {
+    aldp: prepTraj(SY.aldp, SY.aldp.settings.internal),
+    al4: prepTraj(SY.al4, SY.al4.settings.internal),
+  };
+  T.aldp.sys = SY.aldp; T.al4.sys = SY.al4;
+  // the coordinate whose Gibbs label is shown: phi of ALDP
+  const phiD = T.aldp.coords.findIndex(c => c.rama?.angle === "φ");
+  const parts = [
+    { kind: "intro", dur: 13, chap: "Molecules as tokens" },
+    { kind: "gen", key: "aldp", dur: 29, chap: "Generating a structure" },
+    { kind: "label", dur: 11, chap: "Gibbs labels" },
+    { kind: "gen", key: "al4", dur: 17, chap: "Tetrapeptide" },
+    { kind: "eq", dur: 21, chap: "Equilibrium" },
+    { kind: "eq4", dur: 14 },
+    { kind: "score", dur: 10, chap: "Results" },
+  ];
+  const tl = timeline(parts);
+  const user = { yaw: 0, pitch: 0 };
+  const angles = t => [0.6 + t * ((2 * Math.PI) / 36) + user.yaw, 0.32 + user.pitch];
+  const header = (ctx, G, title, sub, alpha = 1) => {
+    const tt = Array.isArray(title) ? title[G.tall ? 1 : 0] : title;
+    text(ctx, tt, G.title.x, G.title.y, { font: FONT.display, weight: 600, size: 30, alpha });
+    if (sub) wrapText(ctx, sub, G.sub.x, G.sub.y, G.sub.w, 22 * FS, { size: 16, color: theme["ink-2"], alpha });
+  };
+  const foot = (ctx, G, s, alpha) => wrapText(ctx, s, G.foot.x, G.foot.y, G.foot.w, 21 * FS, { size: 15, color: theme["ink-2"], alpha });
+  const italic = (ctx, s, x, y, o = {}) => text(ctx, s, x, y, { font: FONT.display, weight: "italic 400", size: 19, ...o });
+
+  // tokens: one group of three per placed atom (the first group holds the three frame coordinates)
+  function tokenLayout(D, box) {
+    const groups = D / 3, perRow = groups > 20 || box.w > 600 ? 10 : 7, rows = Math.ceil(groups / perRow);
+    const gGap = 12, iGap = 2, gw = (box.w - (perRow - 1) * gGap) / perRow, ts = (gw - 2 * iGap) / 3;
+    return { ts, rows, perRow, bottom: box.y + rows * (ts + 24), at: d => {
+      const g = Math.floor(d / 3), r = Math.floor(g / perRow), c = g % perRow, i = d % 3;
+      return [box.x + c * (gw + gGap) + i * (ts + iGap), box.y + r * (ts + 24)];
+    } };
+  }
+  function drawTokens(ctx, Tr, box, state, alpha = 1) {
+    const lay = tokenLayout(Tr.D, box), mol = Tr.sys.mol;
+    for (let d = 0; d < Tr.D; d++) {
+      const [x, y] = lay.at(d), st = state(d);
+      ctx.save();
+      ctx.globalAlpha = alpha * (st.alpha ?? 1);
+      ctx.fillStyle = st.color ?? theme.mask;
+      ctx.beginPath(); ctx.roundRect(x, y, lay.ts, lay.ts, 3); ctx.fill();
+      if (st.active) { ctx.strokeStyle = theme.accent; ctx.lineWidth = 2.4; ctx.stroke(); }
+      if (st.rama) { ctx.fillStyle = theme.ink; ctx.beginPath(); ctx.arc(x + lay.ts / 2, y - 4, 2, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+      if (d % 3 === 1) {
+        const atom = Tr.coords[d].atom, lab = d < 3 ? "frame" : mol.els[atom];
+        text(ctx, lab, x + lay.ts / 2, y + lay.ts + 14, { font: FONT.mono, size: 11, color: theme["ink-2"], align: "center", alpha });
+      }
+    }
+    return lay;
+  }
+  // the categorical over the L bins of one coordinate: bars, the sampled bin, the bin axis
+  function drawCat(ctx, b, q, L, o = {}) {
+    const a = o.alpha ?? 1;
+    if (a <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = theme.rule; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(b.x, b.y + b.h + 0.5); ctx.lineTo(b.x + b.w, b.y + b.h + 0.5); ctx.stroke();
+    const bw = b.w / L, g = o.grow ?? 1;
+    for (let l = 0; l < L; l++) {
+      const h = (q[l] / 255) * b.h * g;
+      if (h < 0.4) continue;
+      ctx.fillStyle = o.pick === l && (o.pickAlpha ?? 1) > 0.5 ? theme.ink : (o.color ?? theme.accent);
+      ctx.globalAlpha = a * (o.pick === l || o.fade == null ? 0.85 : 0.85 * (1 - o.fade));
+      ctx.fillRect(b.x + l * bw + (bw > 3 ? 0.5 : 0), b.y + b.h - h, Math.max(1, bw - (bw > 3 ? 1 : 0)), h);
+    }
+    if (o.pick != null && (o.pickAlpha ?? 1) > 0) {
+      const x = b.x + o.pick * bw + bw / 2;
+      ctx.globalAlpha = a * (o.pickAlpha ?? 1);
+      ctx.fillStyle = theme.ink;
+      ctx.beginPath(); ctx.moveTo(x, b.y - 4); ctx.lineTo(x - 6, b.y - 13); ctx.lineTo(x + 6, b.y - 13); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+  // reveal schedule: the first calls slowly, the rest faster
+  function schedule(D, slow) {
+    const w = Array.from({ length: D }, (_, k) => (k < slow[0] ? slow[1] : k < slow[0] + 6 ? 2 : 1));
+    const tot = w.reduce((s, v) => s + v, 0), cum = [0];
+    w.forEach(v => cum.push(cum.at(-1) + v / tot));
+    return u => {
+      if (u <= 0) return [0, 0];
+      if (u >= 1) return [D, 0];
+      let k = 0;
+      while (cum[k + 1] < u) k++;
+      return [k, (u - cum[k]) / (cum[k + 1] - cum[k])];
+    };
+  }
+  const SCHED = { aldp: schedule(T.aldp.D, [4, 6]), al4: schedule(T.al4.D, [3, 8]) };
+  // one colour per position in a coordinate triple: bond / angle / dihedral, or x / y / z
+  const kindColor = d => rgba(d < 3 ? [hexRGB(theme["ink-2"]), hexRGB(theme["ink-2"]), hexRGB(theme.accent)][d]
+                                    : [hexRGB(theme["ink-2"]), hexRGB(theme.accent), SPIN_RGB[1]][d % 3]);
+  const GEN_TEXT = {
+    aldp: [["Generating alanine dipeptide, one coordinate per network call", "Generating a structure"],
+           "The denoiser reveals the 60 internal coordinates in a random order. Masked coordinates are drawn at the network's current guess, so the structure settles as they are revealed."],
+    al4: [["Alanine tetrapeptide: D = 120", "Alanine tetrapeptide"],
+          "The same sampler on 42 atoms and three residues, each with its own φ and ψ."],
+  };
+
+  function drawGen(ctx, G, seg, tau, yaw, pitch) {
+    const Tr = T[seg.key], D = Tr.D, mol = Tr.sys.mol;
+    header(ctx, G, GEN_TEXT[seg.key][0], GEN_TEXT[seg.key][1], clamp01(tau * 2));
+    const w0 = 2, w1 = seg.dur - 3.4;
+    const [k, f] = SCHED[seg.key](clamp01((tau - w0) / (w1 - w0)));
+    const picked = f > 0.55 ? 1 : 0;                         // the sampled bin lands at 55 % of a call
+    const done = d => Tr.step[d] < k || (Tr.step[d] === k && picked);
+    const kf = Math.min(D, k + ease(clamp01((f - 0.55) / 0.45)));
+    const P = frameAt(Tr.pos, mol.n, kf);
+    const aA = new Float32Array(mol.n);
+    for (let i = 0; i < mol.n; i++) {
+      const cs = Tr.atomCoords[i];
+      const fr = cs.length ? cs.reduce((s, d) => s + (done(d) ? 1 : 0), 0) / cs.length : 1;
+      aA[i] = 0.24 + 0.76 * Math.pow(fr, 1.4);
+    }
+    const cur = k < D ? Tr.order[k] : null;
+    const into = ease(clamp01(tau / 1.2));
+    drawMolecule(ctx, mol, P, G.view, yaw, pitch, { frame: Tr.frame, atomAlpha: aA, alpha: into,
+                                                    ring: cur != null && tau > w0 ? new Set([Tr.coords[cur].atom]) : null });
+    const lay = drawTokens(ctx, Tr, G.tok, d => ({
+      color: done(d) ? kindColor(d) : theme.mask, active: d === cur && tau > w0,
+      rama: Tr.coords[d].rama != null,
+    }), into);
+    // the coordinate being revealed and its categorical, below the tokens
+    const c = { ...G.cat, y: lay.bottom + 76 };
+    const stats = { x: G.stats.x, y: G.tall ? c.y + c.h + 62 : Math.max(G.stats.y - 40, c.y + c.h + 70) };
+    if (cur != null && tau > w0) {
+      const C = Tr.coords[cur];
+      const name = `${KIND_NAME[C.kind] ?? C.kind} ${C.label}${C.rama ? ` · ${C.rama.angle}` : ""}`;
+      text(ctx, name, c.x, c.y - 30, { size: 16, weight: 600 });
+      const q = Tr.probs.subarray(k * Tr.L, (k + 1) * Tr.L);
+      drawCat(ctx, c, q, Tr.L, { grow: ease(clamp01((f - 0.05) / 0.35)), pick: Tr.bins[cur], pickAlpha: clamp01((f - 0.45) / 0.1),
+                                 fade: ease(clamp01((f - 0.6) / 0.3)) * 0.6 });
+      if (picked) text(ctx, coordValue(Tr, cur, Tr.bins[cur]), c.x + c.w, c.y - 30, { font: FONT.mono, size: 15, align: "right", color: theme.accent });
+      text(ctx, `bin 1`, c.x, c.y + c.h + 18, { font: FONT.mono, size: 12, color: theme["ink-2"] });
+      text(ctx, `bin ${Tr.L}`, c.x + c.w, c.y + c.h + 18, { font: FONT.mono, size: 12, color: theme["ink-2"], align: "right" });
+    } else if (k >= D) {
+      const fin = clamp01((tau - w1) / 0.6);
+      const r = Tr.rama.map(([ph, ps], i) => `${Tr.sys.molecule.rama_res.length > 1 ? `Ala ${i + 2}: ` : ""}φ ${fmtDeg(ph)}, ψ ${fmtDeg(ps)} (${Tr.basin[i]})`);
+      text(ctx, "The finished draw", c.x, c.y - 30, { size: 16, weight: 600, alpha: fin });
+      r.forEach((s, i) => text(ctx, s, c.x, c.y + i * 24 * FS, { font: FONT.mono, size: 15, alpha: fin }));
+      text(ctx, `E = ${Tr.energy.toFixed(1)} kJ/mol`, c.x, c.y + r.length * 24 * FS + 8, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: fin });
+    }
+    const n = Math.min(D, k + picked);
+    text(ctx, `network calls  ${n} / ${D}`, stats.x, stats.y, { font: FONT.mono, size: 15, alpha: into });
+    if (n > 0) text(ctx, `log q(x | order) = ${Tr.log_q[n - 1].toFixed(1)}`, stats.x, stats.y + 24 * FS, { font: FONT.mono, size: 15, color: theme["ink-2"], alpha: into });
+    if (n === D) foot(ctx, G, "A uniform point inside each bin makes the draw continuous, with an exact density: its importance weight corrects it to the Boltzmann distribution.", clamp01((tau - w1 - 0.8) / 0.6));
+  }
+
+  function drawIntro(ctx, G, tau, yaw, pitch) {
+    const Tr = T.aldp, mol = Tr.sys.mol;
+    header(ctx, G, ["A molecule as a sequence of discrete coordinates", "A molecule as discrete tokens"],
+      "Alanine dipeptide has 22 atoms and D = 60 internal coordinates: each atom is placed by a bond length, an angle and a dihedral relative to atoms placed before it.", clamp01(tau / 0.6));
+    const into = ease(clamp01(tau / 1));
+    const nPlaced = Tr.D / 3 - 1, hl = Math.min(nPlaced - 1, Math.floor(clamp01((tau - 2.2) / 4.2) * nPlaced));
+    const atom = Tr.coords[3 + 3 * hl].atom;
+    drawMolecule(ctx, mol, Tr.fin, G.view, yaw, pitch, { frame: Tr.frame, alpha: into, ring: tau > 2.2 && tau < 6.6 ? new Set([atom]) : null });
+    const kindRGB = { 0: hexRGB(theme["ink-2"]), 1: hexRGB(theme.accent), 2: SPIN_RGB[1] };
+    drawTokens(ctx, Tr, G.introTok, d => ({
+      color: kindColor(d),
+      alpha: ease(clamp01((tau - 1 - d * 0.02) / 0.4)) * (tau > 2.2 && tau < 6.6 ? (Math.floor(d / 3) === hl + 1 ? 1 : 0.35) : 1),
+      rama: Tr.coords[d].rama != null,
+    }), 1);
+    const ky = G.introTok.y - 26, la = ease(clamp01((tau - 1.4) / 0.5));
+    let x = G.introTok.x;
+    [["bond", kindRGB[0]], ["angle", kindRGB[1]], ["dihedral", kindRGB[2]]].forEach(([s, col]) => {
+      ctx.save(); ctx.globalAlpha = la; ctx.fillStyle = rgba(col); ctx.beginPath(); ctx.roundRect(x, ky - 11, 12, 12, 2); ctx.fill(); ctx.restore();
+      x += 18 + text(ctx, s, x + 18, ky, { size: 14, alpha: la }) + 18;
+    });
+    ctx.save(); ctx.globalAlpha = la; ctx.fillStyle = theme.ink; ctx.beginPath(); ctx.arc(x + 4, ky - 5, 2.4, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    text(ctx, "backbone φ, ψ", x + 12, ky, { size: 14, alpha: la });
+    // one dihedral cut into 64 bins: a dial
+    const da = ease(clamp01((tau - 6.8) / 0.6)), dl = G.dial;
+    if (da > 0) {
+      ctx.save();
+      ctx.globalAlpha = da;
+      const L = 64, pick = Tr.bins[phiD];
+      for (let l = 0; l < L; l++) {
+        const a0 = (l / L) * 2 * Math.PI - Math.PI / 2, a1 = ((l + 1) / L) * 2 * Math.PI - Math.PI / 2;
+        ctx.fillStyle = rgba(binRGB(l, L));
+        ctx.beginPath(); ctx.arc(dl.x, dl.y, dl.r, a0 + 0.006, a1 - 0.006); ctx.arc(dl.x, dl.y, dl.r * 0.74, a1 - 0.006, a0 + 0.006, true); ctx.closePath(); ctx.fill();
+      }
+      const fill = ease(clamp01((tau - 8.2) / 0.6));
+      if (fill > 0) {
+        const a0 = (pick / L) * 2 * Math.PI - Math.PI / 2;
+        ctx.strokeStyle = theme.ink; ctx.lineWidth = 2.5 * fill;
+        ctx.beginPath(); ctx.arc(dl.x, dl.y, dl.r + 4, a0, a0 + (2 * Math.PI) / L); ctx.arc(dl.x, dl.y, dl.r * 0.74 - 4, a0 + (2 * Math.PI) / L, a0, true); ctx.closePath(); ctx.stroke();
+      }
+      ctx.restore();
+      text(ctx, "φ", dl.x, dl.y + 8, { font: FONT.display, weight: "italic 400", size: 30, align: "center", alpha: da });
+      const tx = G.dial.x + G.dial.r + 34;
+      const lines = ["L = 64 bins per coordinate:", "a configuration is a sequence", "of D tokens, like a lattice."];
+      lines.forEach((s, i) => text(ctx, s, tx, dl.y - 18 + i * 24 * FS, { size: 16, alpha: da }));
+    }
+    foot(ctx, G, "The discrete target is the Boltzmann mass of every cell of the grid. No MD data enters training: only the energy.", ease(clamp01((tau - 10) / 0.6)));
+  }
+
+  function drawLabel(ctx, G, tau, yaw, pitch) {
+    const Tr = T.aldp, mol = Tr.sys.mol, L = Tr.L;
+    header(ctx, G, ["The training signal: Gibbs labels", "Gibbs labels"],
+      `For every buffered configuration, coordinate d is moved to each of its ${L} bin centres with all others held fixed, and the softmax of −U over them is the label: D × L = ${Tr.D * L} energies per configuration.`, clamp01(tau / 0.6));
+    const into = ease(clamp01(tau / 0.8));
+    const C = Tr.coords[phiD], quad = [C.atom];
+    drawMolecule(ctx, mol, Tr.fin, G.lview, yaw, pitch, { frame: Tr.frame, alpha: into, ring: new Set(quad) });
+    const k = Tr.step[phiD];
+    const q = Tr.probs.subarray(k * L, (k + 1) * L), lab = Tr.gibbs.subarray(phiD * L, (phiD + 1) * L);
+    const a1 = ease(clamp01((tau - 1) / 0.6)), a2 = ease(clamp01((tau - 3.6) / 0.6));
+    text(ctx, "denoiser: q(φ | the coordinates revealed before it)", G.lq.x, G.lq.y - 28, { size: 15, weight: 600, alpha: a1 });
+    drawCat(ctx, G.lq, q, L, { alpha: a1, grow: a1, pick: Tr.bins[phiD] });
+    text(ctx, "Gibbs label of the finished draw: softmax over the 64 bins of −U", G.llab.x, G.llab.y - 28, { size: 15, weight: 600, alpha: a2 });
+    drawCat(ctx, G.llab, lab, L, { alpha: a2, grow: a2, color: theme.accent, pick: Tr.bins[phiD] });
+    [G.lq, G.llab].forEach((b, i) => {
+      const al = i ? a2 : a1;
+      text(ctx, "φ = −180°", b.x, b.y + b.h + 18, { font: FONT.mono, size: 12, color: theme["ink-2"], alpha: al });
+      text(ctx, "180°", b.x + b.w, b.y + b.h + 18, { font: FONT.mono, size: 12, color: theme["ink-2"], align: "right", alpha: al });
+    });
+    foot(ctx, G, "The denoiser is fitted to these labels at freshly masked copies, with importance weights tempered to a target ESS: the target is a fixed point of the iteration.", ease(clamp01((tau - 6.2) / 0.6)));
+  }
+
+  // equilibrium: sample points dropping onto the plane, reweighting, the reweighted surface
+  const pts = {};
+  for (const k of ["aldp", "al4"]) {
+    const s = SY[k].settings.internal.points, r = b64i16(s.rama), w = b64bytes(s.w), R = SY[k].molecule.rama_res.length;
+    pts[k] = { R, n: w.length, phi: i => r[(i * R) * 2] / 10000, psi: i => r[(i * R) * 2 + 1] / 10000, w: i => w[i] / 50 };
+  }
+  const gallery = {};
+  for (const k of ["aldp", "al4"]) {
+    gallery[k] = SY[k].settings.internal.gallery.map(g => {
+      const P = frameAt(b64i16(g.pos), SY[k].mol.n, 0);
+      return { ...g, P, frame: molFrame(P, SY[k].mol.n) };
+    });
+    if (k === "aldp") gallery[k].sort((a, b) => b.rama[0][1] - a.rama[0][1]);
+  }
+  const statLine = (k, coords) => {
+    const s = SY[k].settings[coords], ess = meanOf(s.ess), js = meanOf(s.js_rw.map(r => meanOf(r)));
+    return { ess, js };
+  };
+
+  function drawEq(ctx, G, tau, yaw, pitch) {
+    const S = SY.aldp, set = S.settings.internal, P = pts.aldp;
+    header(ctx, G, ["Equilibrium: 2 million draws against molecular dynamics", "2M draws against MD"],
+      "Ramachandran plot of the backbone dihedrals (φ, ψ). Left: 2.2M frames of parallel-tempering MD, used only for evaluation. Right: DIG-IN's draws.", clamp01(tau / 0.6));
+    const into = ease(clamp01(tau / 0.8));
+    drawRama(ctx, S.md[0], G.md, { alpha: into, title: "MD reference" });
+    basinNames(ctx, G.md, into * 0.9);
+    const dropped = ease(clamp01((tau - 1) / 5.5)), rw = ease(clamp01((tau - 7) / 2.4)), surf = ease(clamp01((tau - 9.8) / 1.6));
+    const wt = G.tall ? "DIG-IN, reweighted" : "DIG-IN, importance-weighted";
+    drawRama(ctx, surf > 0 ? set.rw[0] : null, G.dig, { alpha: into, title: surf < 0.5 && rw <= 0 ? "DIG-IN, as drawn" : wt });
+    if (surf < 1) {
+      const n = Math.floor(dropped * P.n), ink = hexRGB(theme.ink);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(G.dig.x, G.dig.y, G.dig.s, G.dig.s); ctx.clip();
+      for (let i = 0; i < n; i++) {
+        const [x, y] = ramaXY(G.dig, P.phi(i), P.psi(i));
+        const r = lerp(1.5, 1.5 * Math.min(4, P.w(i)), rw);
+        if (r < 0.3) continue;
+        ctx.fillStyle = rgba(ink, (0.42 + 0.2 * rw) * (1 - surf));
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      const shown = rw > 0.02 ? "radius ∝ √weight" : `${fmtInt(n)} draws`;
+      text(ctx, shown, G.dig.x + G.dig.s - 8, G.dig.y + 20, { font: FONT.mono, size: 13, align: "right", halo: true, alpha: into * (1 - surf) });
+    }
+    // finished draws in each basin
+    const ga = ease(clamp01((tau - 11.6) / 0.8));
+    if (surf > 0) basinNames(ctx, G.dig, surf * 0.9 * (1 - ga));
+    if (ga > 0) {
+      gallery.aldp.slice(0, 3).forEach((g, i) => {
+        const v = G.gal.xs ? { x: G.gal.xs[i], y: G.gal.y, r: G.gal.r } : { x: G.gal.x, y: G.gal.ys[i], r: G.gal.r };
+        const a = ease(clamp01((tau - 11.6 - i * 0.5) / 0.6));
+        drawMolecule(ctx, S.mol, g.P, v, yaw + i, pitch, { frame: g.frame, alpha: a });
+        const [px, py] = ramaXY(G.dig, g.rama[0][0], g.rama[0][1]);
+        ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = theme.surface; ctx.strokeStyle = theme.ink; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(px, py, 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
+        const tx = G.gal.xs ? v.x : v.x + v.r + 12, ty = G.gal.xs ? v.y + v.r + 22 : v.y + 6;
+        text(ctx, g.basin[0], tx, ty, { font: FONT.display, weight: "italic 600", size: 18, alpha: a, align: G.gal.xs ? "center" : "left" });
+        if (!G.gal.xs) arrow(ctx, v.x - v.r - 6, v.y, px + 9, py, 30, ease(clamp01((tau - 12 - i * 0.5) / 0.6)), { width: 1.6, head: 9, color: theme["ink-2"], alpha: a * 0.8 });
+      });
+    }
+    const st = statLine("aldp", "internal"), sa = ease(clamp01((tau - 14) / 0.6));
+    const e = G.eqStats;
+    const dy = G.tall ? 30 * FS : 0;
+    text(ctx, `ESS ${st.ess.toFixed(2)}`, e.x, e.y, { font: FONT.mono, size: 16, alpha: sa });
+    text(ctx, `Ramachandran JS ${fmtSci(st.js)}`, e.x + (G.tall ? 0 : 150), e.y + dy, { font: FONT.mono, size: 16, alpha: sa });
+    text(ctx, "seed mean, 2M draws per run", e.x + (G.tall ? 0 : 470), e.y + 2 * dy, { size: 14, color: theme["ink-2"], alpha: sa });
+    foot(ctx, G, "Half of the draws are effective: the sampler matches the reference, including the sparse αL basin at φ > 0.", ease(clamp01((tau - 15.4) / 0.6)));
+  }
+
+  function drawEq4(ctx, G, tau, yaw, pitch) {
+    const S = SY.al4, set = S.settings.internal, R = 3;
+    header(ctx, G, ["Alanine tetrapeptide: three residues at once", "Three residues at once"],
+      "Ramachandran plots of the three alanines; top: MD, bottom: DIG-IN in internal coordinates, importance-weighted.", clamp01(tau / 0.6));
+    const g = G.grid;
+    for (let r = 0; r < R; r++) {
+      const a = ease(clamp01((tau - 0.3 - r * 0.25) / 0.6)), a2 = ease(clamp01((tau - 1.6 - r * 0.25) / 0.6));
+      const bx = g.x + r * g.gx;
+      drawRama(ctx, S.md[r], { x: bx, y: g.y, s: g.s }, { alpha: a, title: `Ala ${r + 2}, MD`, titleSize: 15, axes: false, ticks: false });
+      drawRama(ctx, set.rw[r], { x: bx, y: g.y + g.gy, s: g.s }, { alpha: a2, title: `Ala ${r + 2}, DIG-IN`, titleSize: 15, axes: r === 0, ticks: false });
+      const fa = ease(clamp01((tau - 4 - r * 0.3) / 0.6));
+      const md = S.md_basins[r][1], dg = set.basins_rw[r][1];
+      text(ctx, `${md.toFixed(3)}  ${dg.toFixed(3)}`, bx + g.s / 2, g.y + g.gy + g.s + 44, { font: FONT.mono, size: 14, alpha: fa, align: "center" });
+    }
+    const ly = g.y + g.gy + g.s + 44, la = ease(clamp01((tau - 4) / 0.6));
+    if (G.tall) text(ctx, "β/PPII fraction per residue: MD, then DIG-IN", g.x, ly + 26 * FS, { size: 13, color: theme["ink-2"], alpha: la });
+    else text(ctx, "β/PPII fraction, MD and DIG-IN:", g.x - 4, ly, { size: 13, color: theme["ink-2"], align: "right", alpha: la });
+    const gv = G.grid4Gal;
+    gallery.al4.slice(0, 2).forEach((q, i) => {
+      const v = gv.xs ? { x: gv.xs[i], y: gv.y, r: gv.r } : { x: gv.x, y: gv.ys[i], r: gv.r };
+      const a = ease(clamp01((tau - 5 - i * 0.6) / 0.7));
+      drawMolecule(ctx, S.mol, q.P, v, yaw + i * 1.3, pitch, { frame: q.frame, alpha: a });
+      const lab = q.basin.join(" · ");
+      text(ctx, lab, v.x, v.y + v.r + 20, { font: FONT.display, weight: "italic 400", size: 16, align: "center", alpha: a });
+    });
+    const st = statLine("al4", "internal");
+    foot(ctx, G, `ESS ${st.ess.toFixed(3)}, Ramachandran JS ${fmtSci(st.js)}; the reweighted basin fractions of every residue match MD to within 0.002.`, ease(clamp01((tau - 8) / 0.6)));
+  }
+
+  function drawScore(ctx, G, tau) {
+    header(ctx, G, ["Two peptides, one recipe, no MD data", "Two peptides, no MD data"],
+      "Effective sample size and Ramachandran JS divergence of the importance-weighted draws against MD, mean over three seeds of 2M draws each.", clamp01(tau / 0.6));
+    const rows = [["aldp", "ALDP", "alanine dipeptide: 22 atoms, D = 60, L = 64"],
+                  ["al4", "AL4", "alanine tetrapeptide: 42 atoms, D = 120, L = 64"]];
+    const c = G.cards;
+    rows.forEach(([k, name, sub], i) => {
+      const a = ease(clamp01((tau - 0.6 - i * 0.35) / 0.6));
+      const x = G.tall ? c.x : c.x + i * (c.w + c.gap), y = G.tall ? c.y + i * (c.h + c.gap) : c.y;
+      ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = theme.wash; ctx.strokeStyle = theme.rule; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(x, y, c.w, c.h, 12); ctx.fill(); ctx.stroke(); ctx.restore();
+      const s = SY[k].settings.internal, ess = meanOf(s.ess), js = meanOf(s.js_rw.map(r => meanOf(r)));
+      text(ctx, name, x + 28, y + 52, { font: FONT.display, weight: 600, size: 32, alpha: a });
+      text(ctx, sub, x + 28, y + 82, { size: 15, color: theme["ink-2"], alpha: a });
+      const cols = [["effective sample size", ess.toFixed(ess > 0.1 ? 2 : 3)], ["Ramachandran JS", fmtSci(js)]];
+      cols.forEach(([lab, val], j) => {
+        const cx = x + 28 + j * (c.w / 2);
+        text(ctx, lab, cx, y + 150, { font: FONT.mono, size: 13, color: theme["ink-2"], alpha: a });
+        text(ctx, val, cx, y + 204, { font: FONT.display, weight: 600, size: 46, alpha: a });
+      });
+      text(ctx, `about ${fmtInt(Number((ess * 2e6).toPrecision(2)))} effective draws per run of 2M`, x + 28, y + c.h - 24, { size: 14, color: theme["ink-2"], alpha: a });
+    });
+    foot(ctx, G, "Training uses only the potential energy (amber99SB-ILDN with implicit solvent); the MD reference enters only the evaluation.", ease(clamp01((tau - 2.6) / 0.6)));
+  }
+
+  function draw(ctx, t, film) {
+    const G = bgGeometry(film.mode);
+    const [seg] = tl.at(t);
+    const tau = t - seg.t0, [yaw, pitch] = angles(t);
+    try {
+      if (seg.kind === "intro") drawIntro(ctx, G, tau, yaw, pitch);
+      else if (seg.kind === "gen") drawGen(ctx, G, seg, tau, yaw, pitch);
+      else if (seg.kind === "label") drawLabel(ctx, G, tau, yaw, pitch);
+      else if (seg.kind === "eq") drawEq(ctx, G, tau, yaw, pitch);
+      else if (seg.kind === "eq4") drawEq4(ctx, G, tau, yaw, pitch);
+      else drawScore(ctx, G, tau);
+    } catch (e) { console.error(e); }
+  }
+  function attach(film) { dragRotate(film, user, () => { const G = bgGeometry(film.mode); return [G.view, G.lview]; }); }
+  return { timeline: tl, poster: tl.segs[1].t0 + 14, dims: { wide: { W: 1280, H: 720 }, tall: { W: 720, H: 1180 } }, draw, attach };
+}
+
+// drag inside one of the given views to turn the molecules
+function dragRotate(film, user, views) {
+  let drag = null;
+  film.canvas.addEventListener("pointerdown", ev => {
+    const [x, y] = film.toLogical(ev);
+    if (!views().some(v => Math.hypot(x - v.x, y - v.y) < v.r * 1.1)) return;
+    drag = { x: ev.clientX, y: ev.clientY, yaw: user.yaw, pitch: user.pitch };
+    film.canvas.setPointerCapture(ev.pointerId);
+  });
+  film.canvas.addEventListener("pointermove", ev => {
+    if (!drag) return;
+    user.yaw = drag.yaw + (ev.clientX - drag.x) * 0.01;
+    user.pitch = Math.max(-1.2, Math.min(1.2, drag.pitch + (ev.clientY - drag.y) * 0.01));
+    film.invalidate();
+  });
+  const end = () => { drag = null; };
+  film.canvas.addEventListener("pointerup", end);
+  film.canvas.addEventListener("pointercancel", end);
+}
+
+/* ------------------------------------------------------------------ free-energy film */
+// The DIG-IN bridge on FEAT's alanine dipeptide tasks (assets/bridge.json, written by
+// tools/make_bridge_data.py): the marginal of X_t and recorded paths from MD frames of endpoint 0
+// to endpoint 1, the path weights, and the estimates against the references.
+function feGeometry(mode) {
+  if (mode === "wide") return {
+    title: { x: 64, y: 70 }, sub: { x: 64, y: 102, w: 1150 }, foot: { x: 64, y: 690, w: 1150 },
+    tv: [{ x: 210, y: 380, r: 118 }, { x: 520, y: 380, r: 118 }], tr: { x: 820, y: 210, s: 330 },
+    rama: { x: 100, y: 192, s: 380 }, bar: { x: 100, y: 622, w: 380 }, mv: { x: 870, y: 352, r: 196 }, read: { x: 660, y: 584 },
+    form: { x: 64, y: 230 }, hist: [{ x: 700, y: 210, w: 500, h: 120 }, { x: 700, y: 430, w: 500, h: 120 }],
+    conv: [{ x: 120, y: 210, w: 440, h: 300 }, { x: 720, y: 210, w: 440, h: 300 }], est: { y: 600 },
+  };
+  return {
+    tall: true, title: { x: 40, y: 62 }, sub: { x: 40, y: 98, w: 640 }, foot: { x: 40, y: 1134, w: 640 },
+    tv: [{ x: 200, y: 400, r: 110 }, { x: 520, y: 400, r: 110 }], tr: { x: 190, y: 660, s: 340 },
+    rama: { x: 130, y: 262, s: 460 }, bar: { x: 130, y: 776, w: 460 }, mv: { x: 360, y: 950, r: 135 }, read: { x: 40, y: 1100 },
+    form: { x: 40, y: 270 }, hist: [{ x: 60, y: 600, w: 600, h: 140 }, { x: 60, y: 860, w: 600, h: 140 }],
+    conv: [{ x: 110, y: 250, w: 540, h: 280 }, { x: 110, y: 720, w: 540, h: 250 }], est: null,
+  };
+}
+
+function makeFEFilm(data) {
+  const mol = prepMol(data.molecule);
+  const TK = {};
+  for (const k of ["aldps", "aldpt"]) {
+    const d = data.tasks[k], F = d.t.length;
+    const tr = b64i16(d.traces), P = tr.length / (2 * F);
+    const hpos = b64i16(d.hero.pos), fin = frameAt(hpos, mol.n, F - 1), start = frameAt(hpos, mol.n, 0);
+    TK[k] = { ...d, F, P, trace: (p, f) => [tr[(p * F + f) * 2] / 10000, tr[(p * F + f) * 2 + 1] / 10000],
+              hpos, frame: molFrame(fin, mol.n, 0.12), fin, start };
+  }
+  const parts = [
+    { kind: "tasks", dur: 13, chap: "Two free energies" },
+    { kind: "move", task: "aldps", dur: 20, chap: "Into solvent" },
+    { kind: "move", task: "aldpt", dur: 20, chap: "Across a barrier" },
+    { kind: "weights", dur: 13, chap: "Path weights" },
+    { kind: "est", dur: 17, chap: "Estimates" },
+  ];
+  const tl = timeline(parts);
+  const user = { yaw: 0, pitch: 0 };
+  const angles = t => [0.9 + t * ((2 * Math.PI) / 40) + user.yaw, 0.25 + user.pitch];
+  const header = (ctx, G, title, sub, alpha = 1) => {
+    const tt = Array.isArray(title) ? title[G.tall ? 1 : 0] : title;
+    text(ctx, tt, G.title.x, G.title.y, { font: FONT.display, weight: 600, size: 30, alpha });
+    if (sub) wrapText(ctx, sub, G.sub.x, G.sub.y, G.sub.w, 22 * FS, { size: 16, color: theme["ink-2"], alpha });
+  };
+  const foot = (ctx, G, s, alpha) => wrapText(ctx, s, G.foot.x, G.foot.y, G.foot.w, 21 * FS, { size: 15, color: theme["ink-2"], alpha });
+  const mono = (ctx, s, x, y, o = {}) => text(ctx, s, x, y, { font: FONT.mono, size: 15, ...o });
+  const pm = (m, s, d) => `${m.toFixed(d)} ± ${s.toFixed(d)}`;
+  const NAME = { aldps: "ALDP-S", aldpt: "ALDP-T" };
+
+  function drawTasks(ctx, G, tau, yaw, pitch) {
+    header(ctx, G, ["Free-energy differences from samples of one state", "Free energies from one state"],
+      "Endpoint 0 comes as MD samples, endpoint 1 only as its energy. A learned CTMC carries one into the other, and its path weights estimate ln Z₁/Z₀.", clamp01(tau / 0.6));
+    const S = TK.aldps, a1 = ease(clamp01((tau - 0.8) / 0.6)), a2 = ease(clamp01((tau - 2.2) / 0.6));
+    const [v0, v1] = G.tv;
+    drawMolecule(ctx, mol, S.start, v0, yaw, pitch, { frame: S.frame, alpha: a1 });
+    solventHalo(ctx, v1, a2);
+    drawMolecule(ctx, mol, S.fin, v1, yaw, pitch, { frame: S.frame, alpha: a2 });
+    text(ctx, "vacuum", v0.x, v0.y + v0.r + 30, { size: 16, align: "center", alpha: a1 });
+    text(ctx, "implicit solvent", v1.x, v1.y + v1.r + 30, { size: 16, align: "center", alpha: a2 });
+    arrow(ctx, v0.x + v0.r * 0.78, v0.y - v0.r * 0.9, v1.x - v1.r * 0.78, v1.y - v1.r * 0.9, -26, a2, { width: 2, head: 11, color: theme.accent });
+    text(ctx, "ALDP-S: solvation", (v0.x + v1.x) / 2, v0.y - v0.r - 34, { size: 18, weight: 600, align: "center", alpha: a1 });
+    const T_ = TK.aldpt, a3 = ease(clamp01((tau - 4.2) / 0.6));
+    drawRama(ctx, TK.aldps.md0, G.tr, { alpha: a3, stateA: T_.phi_a, titleSize: 18,
+                                         title: G.tall ? "ALDP-T: two states in vacuum" : "ALDP-T: two conformational states in vacuum" });
+    if (a3 > 0) {
+      const [xa] = ramaXY(G.tr, (T_.phi_a[0] + T_.phi_a[1]) / 2, 0);
+      subscripted(ctx, "S", "a", xa, G.tr.y + 28, { size: 18, align: "center", alpha: a3 });
+      text(ctx, "C7ax", xa, G.tr.y + 48, { size: 13, align: "center", halo: true, alpha: a3 });
+      const [xb, yb] = ramaXY(G.tr, -1.5, 2.1);
+      subscripted(ctx, "S", "b", xb, yb, { size: 18, align: "center", alpha: a3 });
+      text(ctx, "C7eq, C5", xb, yb + 20, { size: 13, align: "center", halo: true, alpha: a3 });
+    }
+    foot(ctx, G, "Both are FEAT's alanine dipeptide tasks. In ALDP-T the two states do not overlap, so the MD frames of one state cannot simply be reweighted to the other.", ease(clamp01((tau - 7) / 0.6)));
+  }
+
+  function drawMove(ctx, G, seg, tau, yaw, pitch) {
+    const K = TK[seg.task], solv = seg.task === "aldps";
+    header(ctx, G, solv ? ["ALDP-S: carrying vacuum frames into implicit solvent", "ALDP-S: into solvent"] : ["ALDP-T: carrying C7eq/C5 frames across the barrier", "ALDP-T: across the barrier"],
+      "Left: the marginal p_t of the bridge in (φ, ψ), with paths from 32 MD frames. Right: one path in 3D. Coordinates jump one bin at a time; the interpolant mixes the two endpoints.".replace("p_t", "pₜ"), clamp01(tau / 0.6));
+    const t = clamp01((tau - 1.6) / 11.5), into = ease(clamp01(tau / 0.8));
+    const fi = t * 16, i0 = Math.min(15, Math.floor(fi)), mixD = fi - i0;
+    const hold = ease(clamp01((tau - 14.2) / 1.2));
+    drawRama(ctx, K.density[i0], G.rama, { alpha: into, src2: K.density[Math.min(16, i0 + 1)], mix: mixD, stateA: K.phi_a, blur: 0.55,
+                                           title: hold > 0.5 ? "endpoint 1: the bridge and MD (evaluation only)" : `the bridge at t = ${t.toFixed(2)}` });
+    if (hold > 0) {
+      // compare with the endpoint-1 MD: right of the sweeping line the panel shows the MD
+      const b = G.rama, u = 0.5 + 0.42 * Math.cos((2 * Math.PI * Math.max(0, tau - 14.2)) / 5.5);
+      const xw = b.x + b.s * lerp(1, u, hold), sx = ((xw - b.x) / b.s) * RAMA_N;
+      if (b.x + b.s - xw > 0.5) {
+        ctx.save(); ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(ramaImage(K.md1), sx, 0, RAMA_N - sx, RAMA_N, xw, b.y, b.x + b.s - xw, b.s);
+        ctx.strokeStyle = theme.ink; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(xw, b.y); ctx.lineTo(xw, b.y + b.s); ctx.stroke();
+        ctx.restore();
+      }
+      text(ctx, "bridge", xw - 8, b.y + b.s - 10, { size: 13, align: "right", halo: true, alpha: hold });
+      text(ctx, "MD", xw + 8, b.y + b.s - 10, { size: 13, halo: true, alpha: hold });
+    }
+    // traces
+    const f = t * (K.F - 1), ink = hexRGB(theme.ink);
+    if (into > 0 && hold < 1) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(G.rama.x, G.rama.y, G.rama.s, G.rama.s); ctx.clip();
+      for (let p = 0; p < K.P; p++) {
+        const fl = Math.floor(f);
+        ctx.strokeStyle = rgba(ink, 0.35 * (1 - hold)); ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        let prev = null;
+        for (let j = Math.max(0, fl - 10); j <= fl; j++) {
+          const [ph, ps] = K.trace(p, j), [x, y] = ramaXY(G.rama, ph, ps);
+          if (prev && Math.hypot(x - prev[0], y - prev[1]) > G.rama.s / 2) ctx.moveTo(x, y); else if (prev) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+          prev = [x, y];
+        }
+        ctx.stroke();
+        const [ph, ps] = K.trace(p, fl), [x, y] = ramaXY(G.rama, ph, ps);
+        ctx.fillStyle = rgba(ink, 0.85 * (1 - hold));
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+      }
+      const [hx, hy] = ramaXY(G.rama, ...K.hero.rama[Math.round(f)]);
+      ctx.fillStyle = theme.accent; ctx.strokeStyle = theme.surface; ctx.lineWidth = 2;
+      ctx.globalAlpha = 1 - hold;
+      ctx.beginPath(); ctx.arc(hx, hy, 6.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+    // time bar
+    const bar = G.bar, ba = into;
+    ctx.save(); ctx.globalAlpha = ba;
+    ctx.fillStyle = theme.mask; ctx.beginPath(); ctx.roundRect(bar.x, bar.y, bar.w, 6, 3); ctx.fill();
+    ctx.fillStyle = theme.accent; ctx.beginPath(); ctx.roundRect(bar.x, bar.y, bar.w * t, 6, 3); ctx.fill();
+    ctx.restore();
+    mono(ctx, "t = 0", bar.x, bar.y + 26, { size: 13, color: theme["ink-2"], alpha: ba });
+    mono(ctx, "t = 1", bar.x + bar.w, bar.y + 26, { size: 13, color: theme["ink-2"], alpha: ba, align: "right" });
+    if (solv) {
+      text(ctx, "vacuum", bar.x, bar.y - 8, { size: 13, color: theme["ink-2"], alpha: ba });
+      text(ctx, "solvent", bar.x + bar.w, bar.y - 8, { size: 13, color: theme["ink-2"], alpha: ba, align: "right" });
+    } else {
+      subscripted(ctx, "S", "b", bar.x, bar.y - 8, { size: 15, color: theme["ink-2"], alpha: ba });
+      subscripted(ctx, "S", "a", bar.x + bar.w - 14, bar.y - 8, { size: 15, color: theme["ink-2"], alpha: ba });
+    }
+    // the molecule of the highlighted path
+    const P = frameAt(K.hpos, mol.n, f);
+    if (solv) solventHalo(ctx, G.mv, into * t);
+    drawMolecule(ctx, mol, P, G.mv, yaw, pitch, { frame: K.frame, alpha: into });
+    const fr = Math.round(f), r = G.read;
+    mono(ctx, `jumps ${K.hero.jumps[fr]}`, r.x, r.y, { alpha: into });
+    mono(ctx, `φ ${fmtDeg(K.hero.rama[fr][0])}  ψ ${fmtDeg(K.hero.rama[fr][1])}`, r.x + 140, r.y, { alpha: into });
+    const wa = ease(clamp01((tau - 15.6) / 0.6));
+    if (wa > 0) {
+      mono(ctx, `−U₁(z₁) + U₀(z₀) = ${K.hero.ends.toFixed(2)}`, r.x, r.y + 28 * FS, { alpha: wa, size: 14 });
+      mono(ctx, `Σ log B/F = ${K.hero.path >= 0 ? "+" : "−"}${Math.abs(K.hero.path).toFixed(2)}`, r.x, r.y + 52 * FS, { alpha: wa, size: 14 });
+    }
+    const ft = solv ? "Solvent stabilizes αR: part of the probability moves from the extended region to αR while the frames are carried over."
+                    : "Every path that is to count has to rotate φ from negative values into Sₐ; the few that do not end there get weight zero.";
+    foot(ctx, G, ft, ease(clamp01((tau - 9) / 0.6)));
+  }
+
+  function drawWeights(ctx, G, tau) {
+    header(ctx, G, ["Path weights give an unbiased estimate", "Path weights"],
+      "Each path from an MD frame z₀ to an endpoint z₁ carries a weight whose expectation is Z₁/Z₀, for any network.", clamp01(tau / 0.6));
+    const fa = ease(clamp01((tau - 0.6) / 0.6)), F0 = G.form;
+    text(ctx, "log w = −U₁(z₁) + U₀(z₀) + Σₖ [ log Bₖ − log Fₖ ]", F0.x, F0.y, { font: FONT.display, size: 24, alpha: fa });
+    const lines = ["U₀, U₁: reduced energies of the two endpoints",
+                   "Fₖ, Bₖ: forward and backward kernels of step k (τ-leaping, K = 256 steps)",
+                   "ln Ẑ₁/Z₀ = log (1/M) Σᵢ wᵢ  over M paths"];
+    lines.forEach((s, i) => text(ctx, s, F0.x, F0.y + (46 + i * 30) * FS, { size: 16, color: i === 2 ? theme.ink : theme["ink-2"], weight: i === 2 ? 600 : 400, alpha: ease(clamp01((tau - 1.4 - i * 0.6) / 0.6)) }));
+    ["aldps", "aldpt"].forEach((k, j) => {
+      const K = TK[k], h = K.weights.hist, b = G.hist[j], a = ease(clamp01((tau - 3.6 - j * 0.7) / 0.6));
+      if (a <= 0) return;
+      const mx = Math.max(...h), bw = b.w / h.length;
+      ctx.save(); ctx.globalAlpha = a;
+      ctx.strokeStyle = theme.rule; ctx.beginPath(); ctx.moveTo(b.x, b.y + b.h + 0.5); ctx.lineTo(b.x + b.w, b.y + b.h + 0.5); ctx.stroke();
+      ctx.fillStyle = theme.accent;
+      h.forEach((v, i) => { const hh = (v / mx) * b.h; ctx.fillRect(b.x + i * bw + 0.5, b.y + b.h - hh, bw - 1, hh); });
+      ctx.restore();
+      text(ctx, `${NAME[k]}: log w − max, ${fmtInt(K.weights.n)} paths`, b.x, b.y - 12, { size: 15, weight: 600, alpha: a });
+      mono(ctx, `${K.weights.lo.toFixed(0)}`, b.x, b.y + b.h + 18, { size: 12, color: theme["ink-2"], alpha: a });
+      mono(ctx, "0", b.x + b.w, b.y + b.h + 18, { size: 12, color: theme["ink-2"], alpha: a, align: "right" });
+      mono(ctx, `ESS ${K.ess[0].toFixed(3)}`, b.x + b.w, b.y - 12, { size: 14, alpha: a, align: "right" });
+      if (K.weights.n_inf > 0) text(ctx, `${(100 * K.weights.n_inf / K.weights.n).toFixed(2)} % end outside Sₐ: w = 0`, b.x + b.w, b.y + b.h + 40, { size: 13, color: theme["ink-2"], align: "right", alpha: a });
+    });
+    foot(ctx, G, "The kernels include a reversible heat-bath rate. Without it, a downhill jump has zero forward probability while its reverse does not, and the estimate is biased.", ease(clamp01((tau - 6.5) / 0.6)));
+  }
+
+  function convPanel(ctx, b, K, task, u, alpha) {
+    const lo = task === "aldps" ? 29.15 : -4.8, hi = task === "aldps" ? 29.65 : -4.15;
+    const M = K.conv.M, lx0 = Math.log10(M[0]), lx1 = Math.log10(M.at(-1) * 1.25);
+    const X = m => b.x + ((Math.log10(m) - lx0) / (lx1 - lx0)) * b.w, Y = v => b.y + b.h - ((v - lo) / (hi - lo)) * b.h;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = theme.rule; ctx.lineWidth = 1;
+    for (const e of [2, 3, 4, 5]) { const x = X(10 ** e); if (x > b.x && x < b.x + b.w) { ctx.beginPath(); ctx.moveTo(x, b.y); ctx.lineTo(x, b.y + b.h); ctx.stroke(); } }
+    ctx.strokeStyle = theme["ink-2"]; ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
+    const band = (m, s, col, dash) => {
+      ctx.fillStyle = rgba(col, 0.16); ctx.fillRect(b.x, Y(m + s), b.w, Y(m - s) - Y(m + s));
+      ctx.strokeStyle = rgba(col); ctx.lineWidth = 1.6; ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(b.x, Y(m)); ctx.lineTo(b.x + b.w, Y(m)); ctx.stroke(); ctx.setLineDash([]);
+    };
+    band(K.ref.value[0], K.ref.value[1], hexRGB(theme.ink), []);
+    const mMax = 10 ** lerp(lx0, Math.log10(M.at(-1)), u);
+    const curve = (ys, col, width) => {
+      ctx.strokeStyle = col; ctx.lineWidth = width; ctx.beginPath();
+      let started = false;
+      M.forEach((m, i) => { if (m > mMax || ys[i] == null || i >= ys.length) return; const x = X(m), y = Y(ys[i]); if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y); });
+      ctx.stroke();
+    };
+    ["s0", "s1", "s2"].forEach(s => curve(K.conv[s], theme.accent, 1.8));
+    ctx.restore();
+    const tk = { font: FONT.mono, size: 12, color: theme["ink-2"], alpha };
+    for (const e of [2, 3, 4, 5]) { const x = X(10 ** e); if (x > b.x + 4 && x < b.x + b.w) text(ctx, `10${sup(e)}`, x, b.y + b.h + 18, { ...tk, align: "center" }); }
+    text(ctx, "paths M", b.x + b.w / 2, b.y + b.h + 40, { size: 14, align: "center", alpha });
+    [lo, (lo + hi) / 2, hi].forEach(v => text(ctx, v.toFixed(2).replace("-", "−"), b.x - 8, Y(v) + 4, { ...tk, align: "right" }));
+    text(ctx, NAME[task], b.x, b.y - 14, { size: 18, weight: 600, alpha });
+  }
+
+  function drawEst(ctx, G, tau) {
+    header(ctx, G, ["Estimates converge to the references", "Estimates"],
+      "Running estimate from the first M of about 250k paths, three seeds. Black: the reference (BAR on ALDP-S, umbrella sampling on ALDP-T).", clamp01(tau / 0.6));
+    const u = ease(clamp01((tau - 1) / 6));
+    ["aldps", "aldpt"].forEach((k, j) => convPanel(ctx, G.conv[j], TK[k], k, u, ease(clamp01((tau - 0.4 - j * 0.4) / 0.6))));
+    const ea = ease(clamp01((tau - 7.6) / 0.6));
+    ["aldps", "aldpt"].forEach((k, j) => {
+      const K = TK[k], b = G.conv[j], y = G.est ? G.est.y : b.y + b.h + 72;
+      const m = meanOf(K.estimate), s = sdOf(K.estimate);
+      text(ctx, `DIG-IN ${pm(m, s, 3).replace("-", "−")}`, b.x, y, { font: FONT.display, weight: 600, size: 22, alpha: ea });
+      const ref = `${K.ref.name} ${pm(K.ref.value[0], K.ref.value[1], k === "aldps" ? 3 : 2)}`;
+      text(ctx, ref.replaceAll("-", "−"), b.x, y + 28 * FS, { size: 15, color: theme["ink-2"], alpha: ea });
+    });
+    foot(ctx, G, "DIG-IN matches both references from samples of one state only.", ease(clamp01((tau - 9.6) / 0.6)));
+  }
+
+  function draw(ctx, t, film) {
+    const G = feGeometry(film.mode);
+    const [seg] = tl.at(t);
+    const tau = t - seg.t0, [yaw, pitch] = angles(t);
+    try {
+      if (seg.kind === "tasks") drawTasks(ctx, G, tau, yaw, pitch);
+      else if (seg.kind === "move") drawMove(ctx, G, seg, tau, yaw, pitch);
+      else if (seg.kind === "weights") drawWeights(ctx, G, tau);
+      else drawEst(ctx, G, tau);
+    } catch (e) { console.error(e); }
+  }
+  function attach(film) { dragRotate(film, user, () => { const G = feGeometry(film.mode); return [G.mv, ...G.tv]; }); }
+  return { timeline: tl, poster: tl.segs[2].t0 + 9, dims: { wide: { W: 1280, H: 720 }, tall: { W: 720, H: 1180 } }, draw, attach };
+}
+
 /* ------------------------------------------------------------------ page */
 (function tokens() {
   const el = document.getElementById("tokens");
@@ -2245,6 +3150,22 @@ Promise.all([
   if (el) el.textContent = "Could not load the policy data (" + err.message + ").";
 });
 fetch("assets/rl/episodes.json").then(r => r.json()).then(buildEpisodes).catch(() => {});
+const getJSON = url => fetch(url).then(r => (r.ok ? r.json() : Promise.reject(new Error(`${url}: ${r.status}`))));
+const pepData = getJSON("assets/peptides.json");
+pepData.then(pep => {
+  new Film(document.getElementById("film-bg"), "bg", makeBGFilm(pep));
+  document.fonts?.ready.then(() => films.forEach(f => f.invalidate()));
+}).catch(err => {
+  const el = document.querySelector("#film-bg .loading");
+  if (el) el.textContent = "Could not load the structures (" + err.message + ").";
+});
+getJSON("assets/bridge.json").then(br => {
+  new Film(document.getElementById("film-fe"), "fe", makeFEFilm(br));
+  document.fonts?.ready.then(() => films.forEach(f => f.invalidate()));
+}).catch(err => {
+  const el = document.querySelector("#film-fe .loading");
+  if (el) el.textContent = "Could not load the paths (" + err.message + ").";
+});
 requestAnimationFrame(loop);
 </script>
 </body>
